@@ -1,0 +1,54 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: cd dashboard-backend && npm install && npm run test
+      - run: docker build -t myrepo/backend:latest ./dashboard-backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: cd dashboard-frontend && npm install && npm run build
+      - run: docker build -t myrepo/frontend:latest ./dashboard-frontend
+
+  ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: cd dashboard-ai && pip install -r requirements.txt
+      - run: docker build -t myrepo/ai:latest ./dashboard-ai
+
+  deploy:
+    needs: [backend, frontend, ai]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+      - name: Kubeconfig Setup
+        run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig && export KUBECONFIG=$(pwd)/kubeconfig
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install myapp ./charts/umbrella -f ./charts/umbrella/values-prod.yaml
