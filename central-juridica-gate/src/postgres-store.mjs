@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { emptyState, normalizeState } from './store.mjs';
 
 export const POSTGRES_STATE_TABLE_SQL = `
@@ -11,10 +12,25 @@ VALUES (TRUE, $1::jsonb)
 ON CONFLICT (singleton) DO NOTHING;
 `;
 
+export const POSTGRES_DOCUMENT_BLOB_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS central_juridica_document_blobs (
+  document_id text PRIMARY KEY,
+  payload bytea NOT NULL,
+  stored_sha256 char(64) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+`;
+
+function assertHexSha256(value) {
+  if (!/^[a-f0-9]{64}$/.test(String(value || ''))) throw new TypeError('SHA-256 armazenado inválido.');
+}
+
 export class PostgresStateStore {
   constructor(pool) {
     if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL inválido.');
     this.pool = pool;
+    this.supportsDocumentBlobs = true;
   }
 
   async ensure() {
@@ -27,6 +43,13 @@ export class PostgresStateStore {
       'INSERT INTO central_juridica_state(singleton, state) VALUES (TRUE, $1::jsonb) ON CONFLICT (singleton) DO NOTHING',
       [JSON.stringify(emptyState())]
     );
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS central_juridica_document_blobs (
+      document_id text PRIMARY KEY,
+      payload bytea NOT NULL,
+      stored_sha256 char(64) NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
   }
 
   async read() {
@@ -35,14 +58,31 @@ export class PostgresStateStore {
     return normalizeState(result.rows[0].state);
   }
 
-  async mutate(fn) {
+  async transaction(fn) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const selected = await client.query('SELECT state FROM central_juridica_state WHERE singleton = TRUE FOR UPDATE');
       if (!selected.rows?.length) throw new Error('Estado PostgreSQL não inicializado.');
       const db = normalizeState(selected.rows[0].state);
-      const output = await fn(db);
+      const tx = {
+        state: db,
+        putDocumentBlob: async (documentId, payload, storedSha256) => {
+          if (!documentId) throw new TypeError('documentId obrigatório.');
+          if (!Buffer.isBuffer(payload)) throw new TypeError('Payload documental deve ser Buffer.');
+          assertHexSha256(storedSha256);
+          await client.query(
+            `INSERT INTO central_juridica_document_blobs(document_id, payload, stored_sha256)
+             VALUES($1,$2,$3)
+             ON CONFLICT(document_id) DO UPDATE SET payload=excluded.payload, stored_sha256=excluded.stored_sha256, updated_at=now()`,
+            [documentId, payload, storedSha256]
+          );
+        },
+        deleteDocumentBlob: async (documentId) => {
+          await client.query('DELETE FROM central_juridica_document_blobs WHERE document_id=$1', [documentId]);
+        }
+      };
+      const output = await fn(tx);
       await client.query('UPDATE central_juridica_state SET state = $1::jsonb, updated_at = now() WHERE singleton = TRUE', [JSON.stringify(normalizeState(db))]);
       await client.query('COMMIT');
       return output;
@@ -52,6 +92,21 @@ export class PostgresStateStore {
     } finally {
       client.release();
     }
+  }
+
+  async mutate(fn) {
+    return this.transaction(({ state }) => fn(state));
+  }
+
+  async readDocumentBlob(documentId) {
+    const result = await this.pool.query(
+      'SELECT payload, stored_sha256 FROM central_juridica_document_blobs WHERE document_id=$1',
+      [documentId]
+    );
+    if (!result.rows?.length) return null;
+    const row = result.rows[0];
+    const payload = Buffer.isBuffer(row.payload) ? row.payload : Buffer.from(row.payload || []);
+    return { payload, storedSha256: String(row.stored_sha256 || '').trim() };
   }
 
   async ping() {
@@ -71,12 +126,8 @@ export class PostgresStateStore {
 
   async appendAudit(action, entity, entityId, requestId, detail = {}, actor = null) {
     return this.mutate(db => {
-      db.auditLog.unshift({ id: `audit_${cryptoRandom()}`, action, entity, entityId, requestId, actor, detail, at: new Date().toISOString() });
+      db.auditLog.unshift({ id: `audit_${crypto.randomUUID()}`, action, entity, entityId, requestId, actor, detail, at: new Date().toISOString() });
       db.auditLog = db.auditLog.slice(0, 5000);
     });
   }
-}
-
-function cryptoRandom() {
-  return globalThis.crypto.randomUUID();
 }
