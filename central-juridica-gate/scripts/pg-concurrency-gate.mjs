@@ -31,7 +31,39 @@ try {
   await store.ensure();
   await store.ping();
   await store.replaceState(emptyState());
-  phase('adapter-ready');
+  phase('adapter-ready', { documentBlobs: store.supportsDocumentBlobs === true });
+
+  const docId = `doc_gate_${runId}`;
+  const payload = crypto.randomBytes(4096);
+  const storedSha256 = crypto.createHash('sha256').update(payload).digest('hex');
+  await store.transaction(async tx => {
+    await tx.putDocumentBlob(docId, payload, storedSha256);
+    tx.state.documents.push({ id: docId, name: 'gate.bin', storageBackend: 'postgres', storedSha256 });
+  });
+  const blob = await store.readDocumentBlob(docId);
+  assert.ok(blob, 'Blob documental não foi persistido.');
+  assert.equal(blob.payload.equals(payload), true, 'Payload bytea divergiu após leitura.');
+  assert.equal(blob.storedSha256, storedSha256, 'Hash armazenado divergiu.');
+  assert.equal((await store.read()).documents.some(d => d.id === docId), true, 'Metadado documental não foi persistido.');
+  phase('document-blob-atomic-write', { bytes: payload.length, sha256: storedSha256 });
+
+  const rollbackDocId = `doc_rollback_${runId}`;
+  const rollbackPayload = Buffer.from('must-not-persist');
+  const rollbackSha = crypto.createHash('sha256').update(rollbackPayload).digest('hex');
+  let documentRollbackCaught = false;
+  try {
+    await store.transaction(async tx => {
+      await tx.putDocumentBlob(rollbackDocId, rollbackPayload, rollbackSha);
+      tx.state.documents.push({ id: rollbackDocId, storageBackend: 'postgres', storedSha256: rollbackSha });
+      throw new Error('forced-document-rollback-gate');
+    });
+  } catch (error) {
+    documentRollbackCaught = error.message === 'forced-document-rollback-gate';
+  }
+  assert.equal(documentRollbackCaught, true, 'Falha documental forçada não propagou.');
+  assert.equal(await store.readDocumentBlob(rollbackDocId), null, 'Rollback documental falhou: blob persistiu.');
+  assert.equal((await store.read()).documents.some(d => d.id === rollbackDocId), false, 'Rollback documental falhou: metadado persistiu.');
+  phase('document-blob-rollback');
 
   for (let round = 1; round <= 3; round += 1) {
     await store.replaceState(emptyState());
@@ -67,13 +99,14 @@ try {
   phase('post-concurrency-readiness');
 
   evidence.finishedAt = new Date().toISOString();
-  evidence.summary = { rounds: 3, writersPerRound: 25, totalConcurrentMutations: 75, lostUpdates: 0 };
+  evidence.summary = { rounds: 3, writersPerRound: 25, totalConcurrentMutations: 75, lostUpdates: 0, documentBlobAtomicWrite: true, documentBlobRollback: true };
   console.log(JSON.stringify({ ok: true, evidence }, null, 2));
 } catch (error) {
   evidence.finishedAt = new Date().toISOString();
   console.error(JSON.stringify({ ok: false, evidence, error: { name: error.name, message: error.message, stack: error.stack } }, null, 2));
   process.exitCode = 1;
 } finally {
+  try { await pool.query('DELETE FROM central_juridica_document_blobs WHERE document_id LIKE $1', [`%${runId}%`]); } catch {}
   try { await store.replaceState(emptyState()); } catch {}
   await pool.end();
 }
