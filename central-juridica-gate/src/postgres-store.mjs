@@ -2,116 +2,22 @@ import crypto from 'node:crypto';
 import { emptyState, normalizeState } from './store.mjs';
 import { appendAuditEntry, loadAuditKey } from './audit-integrity.mjs';
 
-export const POSTGRES_STATE_TABLE_SQL = `
-CREATE TABLE IF NOT EXISTS central_juridica_state (
-  singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton = TRUE),
-  state jsonb NOT NULL,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-INSERT INTO central_juridica_state(singleton, state)
-VALUES (TRUE, $1::jsonb)
-ON CONFLICT (singleton) DO NOTHING;
-`;
-
-export const POSTGRES_DOCUMENT_BLOB_TABLE_SQL = `
-CREATE TABLE IF NOT EXISTS central_juridica_document_blobs (
-  document_id text PRIMARY KEY,
-  payload bytea NOT NULL,
-  stored_sha256 char(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-`;
-
-function assertHexSha256(value) {
-  if (!/^[a-f0-9]{64}$/.test(String(value || ''))) throw new TypeError('SHA-256 armazenado inválido.');
-}
+function assertHexSha256(value){if(!/^[a-f0-9]{64}$/.test(String(value||'')))throw new TypeError('SHA-256 armazenado inválido.');}
 
 export class PostgresStateStore {
-  constructor(pool) {
-    if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL inválido.');
-    this.pool = pool;
-    this.supportsDocumentBlobs = true;
+  constructor(pool){if(!pool||typeof pool.query!=='function'||typeof pool.connect!=='function')throw new TypeError('Pool PostgreSQL inválido.');this.pool=pool;this.supportsDocumentBlobs=true;}
+  async ensure(){
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS central_juridica_state (singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton = TRUE), state jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`);
+    await this.pool.query('INSERT INTO central_juridica_state(singleton,state) VALUES(TRUE,$1::jsonb) ON CONFLICT(singleton) DO NOTHING',[JSON.stringify(emptyState())]);
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS central_juridica_document_blobs (document_id text PRIMARY KEY,payload bytea NOT NULL,stored_sha256 char(64) NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())`);
   }
-
-  async ensure() {
-    await this.pool.query(`CREATE TABLE IF NOT EXISTS central_juridica_state (
-      singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton = TRUE),
-      state jsonb NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )`);
-    await this.pool.query('INSERT INTO central_juridica_state(singleton, state) VALUES (TRUE, $1::jsonb) ON CONFLICT (singleton) DO NOTHING', [JSON.stringify(emptyState())]);
-    await this.pool.query(`CREATE TABLE IF NOT EXISTS central_juridica_document_blobs (
-      document_id text PRIMARY KEY,
-      payload bytea NOT NULL,
-      stored_sha256 char(64) NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )`);
-  }
-
-  async read() {
-    const result = await this.pool.query('SELECT state FROM central_juridica_state WHERE singleton = TRUE');
-    if (!result.rows?.length) { await this.ensure(); return this.read(); }
-    return normalizeState(result.rows[0].state);
-  }
-
-  async transaction(fn) {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const selected = await client.query('SELECT state FROM central_juridica_state WHERE singleton = TRUE FOR UPDATE');
-      if (!selected.rows?.length) throw new Error('Estado PostgreSQL não inicializado.');
-      const db = normalizeState(selected.rows[0].state);
-      const tx = {
-        state: db,
-        putDocumentBlob: async (documentId, payload, storedSha256) => {
-          if (!documentId) throw new TypeError('documentId obrigatório.');
-          if (!Buffer.isBuffer(payload)) throw new TypeError('Payload documental deve ser Buffer.');
-          assertHexSha256(storedSha256);
-          await client.query(`INSERT INTO central_juridica_document_blobs(document_id, payload, stored_sha256)
-             VALUES($1,$2,$3)
-             ON CONFLICT(document_id) DO UPDATE SET payload=excluded.payload, stored_sha256=excluded.stored_sha256, updated_at=now()`, [documentId, payload, storedSha256]);
-        },
-        deleteDocumentBlob: async (documentId) => client.query('DELETE FROM central_juridica_document_blobs WHERE document_id=$1', [documentId])
-      };
-      const output = await fn(tx);
-      await client.query('UPDATE central_juridica_state SET state = $1::jsonb, updated_at = now() WHERE singleton = TRUE', [JSON.stringify(normalizeState(db))]);
-      await client.query('COMMIT');
-      return output;
-    } catch (error) {
-      try { await client.query('ROLLBACK'); } catch {}
-      throw error;
-    } finally { client.release(); }
-  }
-
-  async mutate(fn) { return this.transaction(({ state }) => fn(state)); }
-
-  async readDocumentBlob(documentId) {
-    const result = await this.pool.query('SELECT payload, stored_sha256 FROM central_juridica_document_blobs WHERE document_id=$1', [documentId]);
-    if (!result.rows?.length) return null;
-    const row = result.rows[0];
-    const payload = Buffer.isBuffer(row.payload) ? row.payload : Buffer.from(row.payload || []);
-    return { payload, storedSha256: String(row.stored_sha256 || '').trim() };
-  }
-
-  async ping() {
-    const result = await this.pool.query('SELECT 1 AS ok');
-    if (result.rows?.[0]?.ok !== 1) throw new Error('PostgreSQL respondeu de forma inesperada ao ping.');
-    return { ok: true, backend: 'postgres' };
-  }
-
-  async replaceState(nextState) {
-    const normalized = normalizeState(nextState);
-    return this.mutate(db => {
-      for (const key of Object.keys(db)) delete db[key];
-      Object.assign(db, structuredClone(normalized));
-      return normalizeState(db);
-    });
-  }
-
-  async appendAudit(action, entity, entityId, requestId, detail = {}, actor = null) {
-    const key = loadAuditKey();
-    return this.mutate(db => appendAuditEntry(db, { id: `audit_${crypto.randomUUID()}`, action, entity, entityId, requestId, actor, detail, at: new Date().toISOString() }, key));
-  }
+  async read(){const r=await this.pool.query('SELECT state FROM central_juridica_state WHERE singleton = TRUE');if(!r.rows?.length){await this.ensure();return this.read();}return normalizeState(r.rows[0].state);}
+  async transaction(fn){const c=await this.pool.connect();try{await c.query('BEGIN');const s=await c.query('SELECT state FROM central_juridica_state WHERE singleton = TRUE FOR UPDATE');if(!s.rows?.length)throw new Error('Estado PostgreSQL não inicializado.');const db=normalizeState(s.rows[0].state);const tx={state:db,putDocumentBlob:async(id,payload,sha)=>{if(!id||!Buffer.isBuffer(payload))throw new TypeError('Blob inválido.');assertHexSha256(sha);await c.query(`INSERT INTO central_juridica_document_blobs(document_id,payload,stored_sha256) VALUES($1,$2,$3) ON CONFLICT(document_id) DO UPDATE SET payload=excluded.payload,stored_sha256=excluded.stored_sha256,updated_at=now()`,[id,payload,sha]);},deleteDocumentBlob:async id=>c.query('DELETE FROM central_juridica_document_blobs WHERE document_id=$1',[id])};const out=await fn(tx);await c.query('UPDATE central_juridica_state SET state=$1::jsonb,updated_at=now() WHERE singleton=TRUE',[JSON.stringify(normalizeState(db))]);await c.query('COMMIT');return out;}catch(e){try{await c.query('ROLLBACK');}catch{}throw e;}finally{c.release();}}
+  async mutate(fn){return this.transaction(({state})=>fn(state));}
+  async readDocumentBlob(id){const r=await this.pool.query('SELECT payload,stored_sha256 FROM central_juridica_document_blobs WHERE document_id=$1',[id]);if(!r.rows?.length)return null;const row=r.rows[0];return{payload:Buffer.isBuffer(row.payload)?row.payload:Buffer.from(row.payload||[]),storedSha256:String(row.stored_sha256||'').trim()};}
+  async ping(){const r=await this.pool.query('SELECT 1 AS ok');if(r.rows?.[0]?.ok!==1)throw new Error('Ping PostgreSQL inválido.');return{ok:true,backend:'postgres'};}
+  async replaceState(next){const n=normalizeState(next);return this.mutate(db=>{for(const k of Object.keys(db))delete db[k];Object.assign(db,structuredClone(n));return normalizeState(db);});}
+  async exportSnapshot(){const c=await this.pool.connect();try{await c.query('BEGIN');const s=await c.query('SELECT state FROM central_juridica_state WHERE singleton=TRUE FOR SHARE');if(!s.rows?.length)throw new Error('Estado PostgreSQL não inicializado para snapshot.');const state=normalizeState(s.rows[0].state);const blobs=[];for(const d of state.documents||[]){const r=await c.query('SELECT payload,stored_sha256 FROM central_juridica_document_blobs WHERE document_id=$1',[d.id]);if(!r.rows?.length)throw new Error(`Blob documental ausente no snapshot: ${d.id}`);const payload=Buffer.isBuffer(r.rows[0].payload)?r.rows[0].payload:Buffer.from(r.rows[0].payload||[]);const storedSha256=String(r.rows[0].stored_sha256||'').trim();assertHexSha256(storedSha256);if(crypto.createHash('sha256').update(payload).digest('hex')!==storedSha256)throw new Error(`Integridade do blob inválida no snapshot: ${d.id}`);blobs.push({documentId:d.id,payload,storedSha256});}await c.query('COMMIT');return{state,blobs};}catch(e){try{await c.query('ROLLBACK');}catch{}throw e;}finally{c.release();}}
+  async restoreSnapshot({state,blobs=[]}){const n=normalizeState(state);const c=await this.pool.connect();try{await c.query('BEGIN');await c.query('SELECT state FROM central_juridica_state WHERE singleton=TRUE FOR UPDATE');await c.query('DELETE FROM central_juridica_document_blobs');for(const b of blobs){if(!b?.documentId||!Buffer.isBuffer(b.payload))throw new TypeError('Snapshot documental inválido.');assertHexSha256(b.storedSha256);if(crypto.createHash('sha256').update(b.payload).digest('hex')!==b.storedSha256)throw new Error(`Hash divergente no snapshot documental: ${b.documentId}`);await c.query('INSERT INTO central_juridica_document_blobs(document_id,payload,stored_sha256) VALUES($1,$2,$3)',[b.documentId,b.payload,b.storedSha256]);}await c.query('UPDATE central_juridica_state SET state=$1::jsonb,updated_at=now() WHERE singleton=TRUE',[JSON.stringify(n)]);await c.query('COMMIT');return{ok:true,restoredDocuments:blobs.length,restoredVersion:n.version};}catch(e){try{await c.query('ROLLBACK');}catch{}throw e;}finally{c.release();}}
+  async appendAudit(action,entity,entityId,requestId,detail={},actor=null){const key=loadAuditKey();return this.mutate(db=>appendAuditEntry(db,{id:`audit_${crypto.randomUUID()}`,action,entity,entityId,requestId,actor,detail,at:new Date().toISOString()},key));}
 }
