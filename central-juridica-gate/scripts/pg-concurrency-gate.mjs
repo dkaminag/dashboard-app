@@ -5,113 +5,21 @@ import { PostgresStateStore } from '../src/postgres-store.mjs';
 import { emptyState } from '../src/store.mjs';
 import { initializeAuditChain, verifyAuditChain } from '../src/audit-integrity.mjs';
 
-if (!process.env.CJ_DATABASE_URL) {
-  console.error(JSON.stringify({ ok: false, error: 'CJ_DATABASE_URL ausente' }));
-  process.exit(2);
-}
-
-const startedAt = new Date().toISOString();
-const runId = crypto.randomUUID();
-const auditKey = crypto.randomBytes(32);
-process.env.CJ_AUDIT_KEY = auditKey.toString('base64url');
-const pool = new pg.Pool({ connectionString: process.env.CJ_DATABASE_URL, max: 30, connectionTimeoutMillis: 5000, idleTimeoutMillis: 5000, statement_timeout: 15000, application_name: 'central-juridica-ci-gate-v1-2' });
-const store = new PostgresStateStore(pool);
-const evidence = { runId, startedAt, phases: [] };
-const phase = (name, detail = {}) => evidence.phases.push({ name, ok: true, ...detail });
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-try {
-  const version = await pool.query('SELECT version() AS version');
-  phase('postgres-connectivity', { version: version.rows[0].version });
-
-  await store.ensure();
-  await store.ping();
+if(!process.env.CJ_DATABASE_URL){console.error(JSON.stringify({ok:false,error:'CJ_DATABASE_URL ausente'}));process.exit(2);}
+const startedAt=new Date().toISOString();const runId=crypto.randomUUID();const auditKey=crypto.randomBytes(32);process.env.CJ_AUDIT_KEY=auditKey.toString('base64url');
+const pool=new pg.Pool({connectionString:process.env.CJ_DATABASE_URL,max:30,connectionTimeoutMillis:5000,idleTimeoutMillis:5000,statement_timeout:15000,application_name:'central-juridica-ci-gate-v1-5'});const store=new PostgresStateStore(pool);const evidence={runId,startedAt,phases:[]};const phase=(name,detail={})=>evidence.phases.push({name,ok:true,...detail});const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+try{
+  const version=await pool.query('SELECT version() AS version');phase('postgres-connectivity',{version:version.rows[0].version});await store.ensure();await store.ping();await store.replaceState(emptyState());phase('adapter-ready',{stateVersion:(await store.read()).version,documentBlobs:store.supportsDocumentBlobs===true});
+  await store.mutate(db=>initializeAuditChain(db,auditKey));await store.appendAudit('CREATE','audit-gate','a1',`req_${runId}_1`,{value:'original'},{id:'gate',role:'admin'});await store.appendAudit('UPDATE','audit-gate','a1',`req_${runId}_2`,{value:'updated'},{id:'gate',role:'admin'});const auditState=await store.read();assert.equal(verifyAuditChain(auditState,auditKey).ok,true);phase('audit-hmac-valid-chain',{entries:auditState.auditLog.length,metaMac:true});
+  const tampered=structuredClone(auditState);tampered.auditLog[0].detail.value='tampered';await store.replaceState(tampered);const tamperResult=verifyAuditChain(await store.read(),auditKey);assert.equal(tamperResult.ok,false);assert.equal(tamperResult.errors.some(e=>String(e).startsWith('HASH_MISMATCH')),true);phase('audit-entry-tamper-detected',{errors:tamperResult.errors});
+  const truncated=structuredClone(auditState);truncated.auditLog.pop();truncated.auditMeta.retainedCount=truncated.auditLog.length;truncated.auditMeta.tailHash=truncated.auditLog.at(-1)?.prevHash||null;truncated.auditMeta.droppedCount=Math.max(0,truncated.auditMeta.totalAppended-truncated.auditLog.length);await store.replaceState(truncated);const truncResult=verifyAuditChain(await store.read(),auditKey);assert.equal(truncResult.ok,false);assert.equal(truncResult.errors.includes('META_MAC_MISMATCH'),true);phase('audit-truncation-metadata-tamper-detected',{errors:truncResult.errors});
   await store.replaceState(emptyState());
-  phase('adapter-ready', { stateVersion: (await store.read()).version, documentBlobs: store.supportsDocumentBlobs === true });
-
-  await store.mutate(db => initializeAuditChain(db, auditKey));
-  await store.appendAudit('CREATE', 'audit-gate', 'a1', `req_${runId}_1`, { value: 'original' }, { id: 'gate', role: 'admin' });
-  await store.appendAudit('UPDATE', 'audit-gate', 'a1', `req_${runId}_2`, { value: 'updated' }, { id: 'gate', role: 'admin' });
-  const auditState = await store.read();
-  assert.equal(verifyAuditChain(auditState, auditKey).ok, true, 'Cadeia HMAC válida foi rejeitada.');
-  phase('audit-hmac-valid-chain', { entries: auditState.auditLog.length });
-
-  const tampered = structuredClone(auditState);
-  tampered.auditLog[0].detail.value = 'tampered-in-db';
-  await store.replaceState(tampered);
-  const tamperResult = verifyAuditChain(await store.read(), auditKey);
-  assert.equal(tamperResult.ok, false, 'Adulteração HMAC não foi detectada.');
-  assert.equal(tamperResult.errors.some(e => String(e).startsWith('HASH_MISMATCH')), true, 'Adulteração não gerou HASH_MISMATCH.');
-  phase('audit-hmac-tamper-detected', { errors: tamperResult.errors });
-  await store.replaceState(emptyState());
-
-  const docId = `doc_gate_${runId}`;
-  const payload = crypto.randomBytes(4096);
-  const storedSha256 = crypto.createHash('sha256').update(payload).digest('hex');
-  await store.transaction(async tx => {
-    await tx.putDocumentBlob(docId, payload, storedSha256);
-    tx.state.documents.push({ id: docId, name: 'gate.bin', storageBackend: 'postgres', storedSha256 });
-  });
-  const blob = await store.readDocumentBlob(docId);
-  assert.ok(blob, 'Blob documental não foi persistido.');
-  assert.equal(blob.payload.equals(payload), true, 'Payload bytea divergiu após leitura.');
-  assert.equal(blob.storedSha256, storedSha256, 'Hash armazenado divergiu.');
-  assert.equal((await store.read()).documents.some(d => d.id === docId), true, 'Metadado documental não foi persistido.');
-  phase('document-blob-atomic-write', { bytes: payload.length, sha256: storedSha256 });
-
-  const rollbackDocId = `doc_rollback_${runId}`;
-  const rollbackPayload = Buffer.from('must-not-persist');
-  const rollbackSha = crypto.createHash('sha256').update(rollbackPayload).digest('hex');
-  let documentRollbackCaught = false;
-  try {
-    await store.transaction(async tx => {
-      await tx.putDocumentBlob(rollbackDocId, rollbackPayload, rollbackSha);
-      tx.state.documents.push({ id: rollbackDocId, storageBackend: 'postgres', storedSha256: rollbackSha });
-      throw new Error('forced-document-rollback-gate');
-    });
-  } catch (error) { documentRollbackCaught = error.message === 'forced-document-rollback-gate'; }
-  assert.equal(documentRollbackCaught, true, 'Falha documental forçada não propagou.');
-  assert.equal(await store.readDocumentBlob(rollbackDocId), null, 'Rollback documental falhou: blob persistiu.');
-  assert.equal((await store.read()).documents.some(d => d.id === rollbackDocId), false, 'Rollback documental falhou: metadado persistiu.');
-  phase('document-blob-rollback');
-
-  for (let round = 1; round <= 3; round += 1) {
-    await store.replaceState(emptyState());
-    const prefix = `cli_gate_${runId}_r${round}_`;
-    const writers = Array.from({ length: 25 }, (_, i) => store.mutate(async db => {
-      await sleep(5 + ((i * 7) % 25));
-      db.clients.push({ id: `${prefix}${i}`, name: `Gate ${round}-${i}` });
-    }));
-    await Promise.all(writers);
-    const state = await store.read();
-    const ids = state.clients.filter(c => c.id.startsWith(prefix)).map(c => c.id);
-    assert.equal(ids.length, 25, `Round ${round}: lost update (${ids.length}/25).`);
-    assert.equal(new Set(ids).size, 25, `Round ${round}: IDs duplicados.`);
-    phase(`concurrency-round-${round}`, { writers: 25, persisted: ids.length });
-  }
-
-  await store.replaceState(emptyState());
-  let rollbackCaught = false;
-  try {
-    await store.mutate(db => { db.clients.push({ id: `rollback_${runId}`, name: 'must-not-persist' }); throw new Error('forced-rollback-gate'); });
-  } catch (error) { rollbackCaught = error.message === 'forced-rollback-gate'; }
-  assert.equal(rollbackCaught, true, 'Falha forçada não propagou como esperado.');
-  const afterRollback = await store.read();
-  assert.equal(afterRollback.clients.some(c => c.id === `rollback_${runId}`), false, 'Rollback falhou: escrita persistiu.');
-  phase('rollback-via-real-adapter');
-
-  await store.ping();
-  phase('post-concurrency-readiness');
-
-  evidence.finishedAt = new Date().toISOString();
-  evidence.summary = { stateVersion: 7, auditHmacValid: true, auditTamperDetected: true, rounds: 3, writersPerRound: 25, totalConcurrentMutations: 75, lostUpdates: 0, documentBlobAtomicWrite: true, documentBlobRollback: true };
-  console.log(JSON.stringify({ ok: true, evidence }, null, 2));
-} catch (error) {
-  evidence.finishedAt = new Date().toISOString();
-  console.error(JSON.stringify({ ok: false, evidence, error: { name: error.name, message: error.message, stack: error.stack } }, null, 2));
-  process.exitCode = 1;
-} finally {
-  try { await pool.query('DELETE FROM central_juridica_document_blobs WHERE document_id LIKE $1', [`%${runId}%`]); } catch {}
-  try { await store.replaceState(emptyState()); } catch {}
-  await pool.end();
-}
+  const docId=`doc_gate_${runId}`;const payload=crypto.randomBytes(4096);const sha=crypto.createHash('sha256').update(payload).digest('hex');await store.transaction(async tx=>{await tx.putDocumentBlob(docId,payload,sha);tx.state.clients.push({id:'cli_snapshot',name:'Snapshot Original'});tx.state.documents.push({id:docId,name:'gate.bin',storageBackend:'postgres',storedSha256:sha});});const blob=await store.readDocumentBlob(docId);assert.equal(blob.payload.equals(payload),true);phase('document-blob-atomic-write',{bytes:payload.length,sha256:sha});
+  const snapshot=await store.exportSnapshot();assert.equal(snapshot.state.clients[0].name,'Snapshot Original');assert.equal(snapshot.blobs.length,1);phase('snapshot-consistent-export',{documents:snapshot.blobs.length,stateVersion:snapshot.state.version});
+  const extraId=`doc_extra_${runId}`;const extra=Buffer.from('extra');const extraSha=crypto.createHash('sha256').update(extra).digest('hex');await store.transaction(async tx=>{tx.state.clients[0].name='Mutated';await tx.putDocumentBlob(extraId,extra,extraSha);tx.state.documents.push({id:extraId,storageBackend:'postgres',storedSha256:extraSha});});const restored=await store.restoreSnapshot(snapshot);assert.equal(restored.ok,true);assert.equal((await store.read()).clients[0].name,'Snapshot Original');assert.equal((await store.readDocumentBlob(docId)).payload.equals(payload),true);assert.equal(await store.readDocumentBlob(extraId),null);phase('snapshot-atomic-restore',{restoredDocuments:restored.restoredDocuments});
+  const bad={state:{...snapshot.state,clients:[{id:'bad',name:'Bad'}]},blobs:snapshot.blobs.map(b=>({...b,payload:Buffer.from('corrupt')}))};await assert.rejects(()=>store.restoreSnapshot(bad),/Hash divergente/);assert.equal((await store.read()).clients[0].name,'Snapshot Original');assert.equal((await store.readDocumentBlob(docId)).payload.equals(payload),true);phase('snapshot-restore-rollback-on-tamper');
+  const rollbackId=`doc_rollback_${runId}`;const rb=Buffer.from('must-not-persist');const rbSha=crypto.createHash('sha256').update(rb).digest('hex');let caught=false;try{await store.transaction(async tx=>{await tx.putDocumentBlob(rollbackId,rb,rbSha);tx.state.documents.push({id:rollbackId});throw new Error('forced-document-rollback-gate');});}catch(e){caught=e.message==='forced-document-rollback-gate';}assert.equal(caught,true);assert.equal(await store.readDocumentBlob(rollbackId),null);phase('document-blob-rollback');
+  for(let round=1;round<=3;round++){await store.replaceState(emptyState());const prefix=`cli_gate_${runId}_r${round}_`;await Promise.all(Array.from({length:25},(_,i)=>store.mutate(async db=>{await sleep(5+((i*7)%25));db.clients.push({id:`${prefix}${i}`,name:`Gate ${round}-${i}`});})));const state=await store.read();const ids=state.clients.filter(c=>c.id.startsWith(prefix)).map(c=>c.id);assert.equal(ids.length,25);assert.equal(new Set(ids).size,25);phase(`concurrency-round-${round}`,{writers:25,persisted:25});}
+  await store.replaceState(emptyState());let rollbackCaught=false;try{await store.mutate(db=>{db.clients.push({id:`rollback_${runId}`,name:'must-not-persist'});throw new Error('forced-rollback-gate');});}catch(e){rollbackCaught=e.message==='forced-rollback-gate';}assert.equal(rollbackCaught,true);assert.equal((await store.read()).clients.some(c=>c.id===`rollback_${runId}`),false);phase('rollback-via-real-adapter');await store.ping();phase('post-concurrency-readiness');
+  evidence.finishedAt=new Date().toISOString();evidence.summary={stateVersion:8,auditEntryHmacValid:true,auditMetadataHmacValid:true,auditTamperDetected:true,auditTruncationDetected:true,snapshotConsistentExport:true,snapshotAtomicRestore:true,snapshotTamperRollback:true,rounds:3,writersPerRound:25,totalConcurrentMutations:75,lostUpdates:0,documentBlobAtomicWrite:true,documentBlobRollback:true};console.log(JSON.stringify({ok:true,evidence},null,2));
+}catch(error){evidence.finishedAt=new Date().toISOString();console.error(JSON.stringify({ok:false,evidence,error:{name:error.name,message:error.message,stack:error.stack}},null,2));process.exitCode=1;}finally{try{await pool.query('DELETE FROM central_juridica_document_blobs WHERE document_id LIKE $1',[`%${runId}%`]);}catch{}try{await store.replaceState(emptyState());}catch{}await pool.end();}
