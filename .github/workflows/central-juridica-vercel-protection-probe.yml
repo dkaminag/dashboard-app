@@ -1,0 +1,26 @@
+name: Central Juridica Vercel Protection Probe
+
+on:
+  push:
+    branches: [audit/central-juridica-pg-gate]
+    paths:
+      - .github/workflows/central-juridica-vercel-protection-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify public deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='https://central-juridica-protection-schema-probe-40vbr1wen.vercel.app'
+          code=$(curl -sS --connect-timeout 5 --max-time 20 -D headers.txt -o body.txt -w '%{http_code}' "$TARGET/")
+          echo "status=$code"
+          grep -iE '^(location|server|x-vercel-id):' headers.txt || true
+          cat body.txt
+          test "$code" = '200'
+          grep -qx 'ok' body.txt
