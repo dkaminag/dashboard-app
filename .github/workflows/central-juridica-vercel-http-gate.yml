@@ -13,7 +13,7 @@ jobs:
   https-gate:
     runs-on: ubuntu-24.04
     env:
-      TARGET: https://central-juridica-v1-1-preview-6c1ndl1c2-dkaminag-2666.vercel.app
+      TARGET: https://central-juridica-v1-1-staging-60a6s5n8g-dkaminag-2666.vercel.app
     steps:
       - name: Wait for public health
         shell: bash
@@ -24,6 +24,7 @@ jobs:
             code=$(curl -sS --connect-timeout 5 --max-time 20 -D headers.txt -o health.json -w '%{http_code}' "$TARGET/api/health" || true)
             echo "attempt=$i status=$code"
             if [ "$code" = "200" ]; then break; fi
+            if [ -f headers.txt ]; then grep -iE '^(location|server|x-vercel-id):' headers.txt || true; fi
             sleep 3
           done
           test "$code" = "200"
