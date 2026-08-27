@@ -1,0 +1,90 @@
+name: Central Juridica Vercel HTTPS Gate
+
+on:
+  push:
+    branches: [audit/central-juridica-pg-gate]
+    paths:
+      - .github/workflows/central-juridica-vercel-http-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  https-gate:
+    runs-on: ubuntu-24.04
+    env:
+      TARGET: https://central-juridica-v1-1-preview-6c1ndl1c2-dkaminag-2666.vercel.app
+    steps:
+      - name: Wait for public health
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="000"
+          for i in $(seq 1 20); do
+            code=$(curl -sS --connect-timeout 5 --max-time 20 -D headers.txt -o health.json -w '%{http_code}' "$TARGET/api/health" || true)
+            echo "attempt=$i status=$code"
+            if [ "$code" = "200" ]; then break; fi
+            sleep 3
+          done
+          test "$code" = "200"
+          jq -e '.ok == true and .version == "1.1.0-preview" and .backend == "postgres" and .documentStorageMode == "postgres" and .documentEncryption == true and .productionGuard == true' health.json
+
+      - name: Validate security headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qi '^strict-transport-security: .*max-age=' headers.txt
+          grep -qi "^content-security-policy: .*default-src 'self'" headers.txt
+          grep -qi '^cross-origin-opener-policy: same-origin' headers.txt
+          grep -qi '^cross-origin-resource-policy: same-origin' headers.txt
+          grep -qi '^x-frame-options: DENY' headers.txt
+          grep -qi '^x-content-type-options: nosniff' headers.txt
+
+      - name: Validate readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 5 --max-time 20 "$TARGET/api/ready" -o ready.json
+          jq -e '.ok == true and .backend == "postgres" and .probe.ok == true and .probe.backend == "postgres"' ready.json
+
+      - name: Validate application page
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 5 --max-time 20 "$TARGET/" -o page.html
+          grep -qi 'Central Jurídica' page.html
+
+      - name: Validate production Origin protection
+        shell: bash
+        run: |
+          set -euo pipefail
+          no_origin=$(curl -sS --connect-timeout 5 --max-time 20 -o no-origin.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data '{"username":"invalid","password":"invalid"}' "$TARGET/api/login")
+          test "$no_origin" = "403"
+          with_origin=$(curl -sS --connect-timeout 5 --max-time 20 -o wrong-login.json -w '%{http_code}' -X POST -H "Origin: $TARGET" -H 'Content-Type: application/json' --data '{"username":"invalid","password":"invalid"}' "$TARGET/api/login")
+          test "$with_origin" = "401"
+
+      - name: Build evidence artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > vercel-http-gate-evidence.json <<JSON
+          {
+            "ok": true,
+            "target": "$TARGET",
+            "version": "1.1.0-preview",
+            "checks": {
+              "httpsHealth": true,
+              "postgresReadiness": true,
+              "securityHeaders": true,
+              "staticPage": true,
+              "originProtection": true
+            }
+          }
+          JSON
+          cat vercel-http-gate-evidence.json
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-vercel-http-gate-evidence
+          path: vercel-http-gate-evidence.json
