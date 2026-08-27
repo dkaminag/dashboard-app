@@ -40,11 +40,15 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Static check
         run: npm run check
-      - name: Run 25-writer concurrency gate
+      - name: Run v1.5 regression gate
         run: npm run gate | tee gate-evidence.json
+      - name: Run v1.6 keyring rotation gate
+        run: npm run keyring-gate | tee keyring-v1-6-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: central-juridica-postgres-gate-evidence
-          path: central-juridica-gate/gate-evidence.json
+          path: |
+            central-juridica-gate/gate-evidence.json
+            central-juridica-gate/keyring-v1-6-evidence.json
