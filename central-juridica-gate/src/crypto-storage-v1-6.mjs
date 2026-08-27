@@ -1,0 +1,10 @@
+import crypto from 'node:crypto';
+import { activeKey, makeSingleKeyring, resolveKey } from './keyring.mjs';
+
+const V1=Buffer.from('CJENC1');
+const V2=Buffer.from('CJENC2');
+function ring(x){return Buffer.isBuffer(x)?makeSingleKeyring(x,{keyId:'document-legacy-v1',source:'compat'}):x;}
+export function encryptLegacyDocument(plain,key){const iv=crypto.randomBytes(12);const c=crypto.createCipheriv('aes-256-gcm',key,iv);const ct=Buffer.concat([c.update(Buffer.from(plain)),c.final()]);return Buffer.concat([V1,iv,c.getAuthTag(),ct]);}
+export function encryptDocument(plain,keyring){const r=ring(keyring);const id=Buffer.from(r.activeKeyId,'utf8');if(id.length<1||id.length>255)throw new Error('keyId documental inválido.');const iv=crypto.randomBytes(12);const header=Buffer.concat([V2,Buffer.from([id.length]),id]);const c=crypto.createCipheriv('aes-256-gcm',activeKey(r),iv);c.setAAD(header);const ct=Buffer.concat([c.update(Buffer.from(plain)),c.final()]);return Buffer.concat([header,iv,c.getAuthTag(),ct]);}
+export function documentKeyId(payload,{legacyKeyId='document-legacy-v1'}={}){const b=Buffer.from(payload);if(b.subarray(0,V1.length).equals(V1))return legacyKeyId;if(!b.subarray(0,V2.length).equals(V2))return null;const n=b[V2.length];return b.subarray(V2.length+1,V2.length+1+n).toString('utf8');}
+export function decryptDocument(payload,keyring){const b=Buffer.from(payload);const r=ring(keyring);if(b.subarray(0,V1.length).equals(V1)){const {key}=resolveKey(r,null,{allowLegacyFallback:true});const iv=b.subarray(V1.length,V1.length+12),tag=b.subarray(V1.length+12,V1.length+28),ct=b.subarray(V1.length+28);const d=crypto.createDecipheriv('aes-256-gcm',key,iv);d.setAuthTag(tag);return Buffer.concat([d.update(ct),d.final()]);}if(b.subarray(0,V2.length).equals(V2)){const n=b[V2.length],s=V2.length+1,e=s+n,id=b.subarray(s,e).toString('utf8');const {key}=resolveKey(r,id);const iv=b.subarray(e,e+12),tag=b.subarray(e+12,e+28),ct=b.subarray(e+28);const d=crypto.createDecipheriv('aes-256-gcm',key,iv);d.setAAD(b.subarray(0,e));d.setAuthTag(tag);return Buffer.concat([d.update(ct),d.final()]);}return b;}
