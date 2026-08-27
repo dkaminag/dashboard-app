@@ -2,6 +2,13 @@ import crypto from 'node:crypto';
 
 const CHAIN_VERSION = 1;
 
+export function loadAuditKey(value = process.env.CJ_AUDIT_KEY) {
+  if (!value) throw new Error('CJ_AUDIT_KEY ausente.');
+  const key = Buffer.from(String(value), 'base64url');
+  if (key.length !== 32) throw new Error('CJ_AUDIT_KEY inválida.');
+  return key;
+}
+
 function canonical(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
