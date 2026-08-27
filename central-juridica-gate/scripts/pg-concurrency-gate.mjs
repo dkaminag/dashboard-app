@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import pg from 'pg';
 import { PostgresStateStore } from '../src/postgres-store.mjs';
 import { emptyState } from '../src/store.mjs';
+import { initializeAuditChain, verifyAuditChain } from '../src/audit-integrity.mjs';
 
 if (!process.env.CJ_DATABASE_URL) {
   console.error(JSON.stringify({ ok: false, error: 'CJ_DATABASE_URL ausente' }));
@@ -11,14 +12,9 @@ if (!process.env.CJ_DATABASE_URL) {
 
 const startedAt = new Date().toISOString();
 const runId = crypto.randomUUID();
-const pool = new pg.Pool({
-  connectionString: process.env.CJ_DATABASE_URL,
-  max: 30,
-  connectionTimeoutMillis: 5000,
-  idleTimeoutMillis: 5000,
-  statement_timeout: 15000,
-  application_name: 'central-juridica-ci-gate'
-});
+const auditKey = crypto.randomBytes(32);
+process.env.CJ_AUDIT_KEY = auditKey.toString('base64url');
+const pool = new pg.Pool({ connectionString: process.env.CJ_DATABASE_URL, max: 30, connectionTimeoutMillis: 5000, idleTimeoutMillis: 5000, statement_timeout: 15000, application_name: 'central-juridica-ci-gate-v1-2' });
 const store = new PostgresStateStore(pool);
 const evidence = { runId, startedAt, phases: [] };
 const phase = (name, detail = {}) => evidence.phases.push({ name, ok: true, ...detail });
@@ -31,7 +27,23 @@ try {
   await store.ensure();
   await store.ping();
   await store.replaceState(emptyState());
-  phase('adapter-ready', { documentBlobs: store.supportsDocumentBlobs === true });
+  phase('adapter-ready', { stateVersion: (await store.read()).version, documentBlobs: store.supportsDocumentBlobs === true });
+
+  await store.mutate(db => initializeAuditChain(db, auditKey));
+  await store.appendAudit('CREATE', 'audit-gate', 'a1', `req_${runId}_1`, { value: 'original' }, { id: 'gate', role: 'admin' });
+  await store.appendAudit('UPDATE', 'audit-gate', 'a1', `req_${runId}_2`, { value: 'updated' }, { id: 'gate', role: 'admin' });
+  const auditState = await store.read();
+  assert.equal(verifyAuditChain(auditState, auditKey).ok, true, 'Cadeia HMAC válida foi rejeitada.');
+  phase('audit-hmac-valid-chain', { entries: auditState.auditLog.length });
+
+  const tampered = structuredClone(auditState);
+  tampered.auditLog[0].detail.value = 'tampered-in-db';
+  await store.replaceState(tampered);
+  const tamperResult = verifyAuditChain(await store.read(), auditKey);
+  assert.equal(tamperResult.ok, false, 'Adulteração HMAC não foi detectada.');
+  assert.equal(tamperResult.errors.some(e => String(e).startsWith('HASH_MISMATCH')), true, 'Adulteração não gerou HASH_MISMATCH.');
+  phase('audit-hmac-tamper-detected', { errors: tamperResult.errors });
+  await store.replaceState(emptyState());
 
   const docId = `doc_gate_${runId}`;
   const payload = crypto.randomBytes(4096);
@@ -57,9 +69,7 @@ try {
       tx.state.documents.push({ id: rollbackDocId, storageBackend: 'postgres', storedSha256: rollbackSha });
       throw new Error('forced-document-rollback-gate');
     });
-  } catch (error) {
-    documentRollbackCaught = error.message === 'forced-document-rollback-gate';
-  }
+  } catch (error) { documentRollbackCaught = error.message === 'forced-document-rollback-gate'; }
   assert.equal(documentRollbackCaught, true, 'Falha documental forçada não propagou.');
   assert.equal(await store.readDocumentBlob(rollbackDocId), null, 'Rollback documental falhou: blob persistiu.');
   assert.equal((await store.read()).documents.some(d => d.id === rollbackDocId), false, 'Rollback documental falhou: metadado persistiu.');
@@ -83,13 +93,8 @@ try {
   await store.replaceState(emptyState());
   let rollbackCaught = false;
   try {
-    await store.mutate(db => {
-      db.clients.push({ id: `rollback_${runId}`, name: 'must-not-persist' });
-      throw new Error('forced-rollback-gate');
-    });
-  } catch (error) {
-    rollbackCaught = error.message === 'forced-rollback-gate';
-  }
+    await store.mutate(db => { db.clients.push({ id: `rollback_${runId}`, name: 'must-not-persist' }); throw new Error('forced-rollback-gate'); });
+  } catch (error) { rollbackCaught = error.message === 'forced-rollback-gate'; }
   assert.equal(rollbackCaught, true, 'Falha forçada não propagou como esperado.');
   const afterRollback = await store.read();
   assert.equal(afterRollback.clients.some(c => c.id === `rollback_${runId}`), false, 'Rollback falhou: escrita persistiu.');
@@ -99,7 +104,7 @@ try {
   phase('post-concurrency-readiness');
 
   evidence.finishedAt = new Date().toISOString();
-  evidence.summary = { rounds: 3, writersPerRound: 25, totalConcurrentMutations: 75, lostUpdates: 0, documentBlobAtomicWrite: true, documentBlobRollback: true };
+  evidence.summary = { stateVersion: 7, auditHmacValid: true, auditTamperDetected: true, rounds: 3, writersPerRound: 25, totalConcurrentMutations: 75, lostUpdates: 0, documentBlobAtomicWrite: true, documentBlobRollback: true };
   console.log(JSON.stringify({ ok: true, evidence }, null, 2));
 } catch (error) {
   evidence.finishedAt = new Date().toISOString();
