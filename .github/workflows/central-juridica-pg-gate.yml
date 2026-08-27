@@ -1,0 +1,50 @@
+name: Central Juridica PostgreSQL Gate
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - "central-juridica-gate/**"
+      - ".github/workflows/central-juridica-pg-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  postgres-concurrency-gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: central_juridica
+          POSTGRES_USER: central_juridica
+          POSTGRES_PASSWORD: ci-gate-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U central_juridica -d central_juridica"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      CJ_DATABASE_URL: postgres://central_juridica:ci-gate-only@127.0.0.1:5432/central_juridica
+    defaults:
+      run:
+        working-directory: central-juridica-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install driver
+        run: npm install --no-audit --no-fund
+      - name: Static check
+        run: npm run check
+      - name: Run 25-writer concurrency gate
+        run: npm run gate | tee gate-evidence.json
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-postgres-gate-evidence
+          path: central-juridica-gate/gate-evidence.json
