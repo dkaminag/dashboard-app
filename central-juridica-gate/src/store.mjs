@@ -1,10 +1,11 @@
 export function emptyState() {
-  return { version: 6, users: [], sessions: [], clients: [], processes: [], tasks: [], documents: [], agreements: [], executionActions: [], financialEntries: [], preventiveAssessments: [], externalEvidence: [], auditLog: [], idempotency: {} };
+  return { version: 7, auditMeta: {}, users: [], sessions: [], clients: [], processes: [], tasks: [], documents: [], agreements: [], executionActions: [], financialEntries: [], preventiveAssessments: [], externalEvidence: [], auditLog: [], idempotency: {} };
 }
 
 export function normalizeState(parsed = {}) {
   return {
-    version: 6,
+    version: 7,
+    auditMeta: parsed.auditMeta && typeof parsed.auditMeta === 'object' ? parsed.auditMeta : {},
     users: Array.isArray(parsed.users) ? parsed.users : [],
     sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
     clients: Array.isArray(parsed.clients) ? parsed.clients : [],
