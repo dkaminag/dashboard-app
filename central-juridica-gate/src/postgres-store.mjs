@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { emptyState, normalizeState } from './store.mjs';
+import { appendAuditEntry, loadAuditKey } from './audit-integrity.mjs';
 
 export const POSTGRES_STATE_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS central_juridica_state (
@@ -39,10 +40,7 @@ export class PostgresStateStore {
       state jsonb NOT NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
-    await this.pool.query(
-      'INSERT INTO central_juridica_state(singleton, state) VALUES (TRUE, $1::jsonb) ON CONFLICT (singleton) DO NOTHING',
-      [JSON.stringify(emptyState())]
-    );
+    await this.pool.query('INSERT INTO central_juridica_state(singleton, state) VALUES (TRUE, $1::jsonb) ON CONFLICT (singleton) DO NOTHING', [JSON.stringify(emptyState())]);
     await this.pool.query(`CREATE TABLE IF NOT EXISTS central_juridica_document_blobs (
       document_id text PRIMARY KEY,
       payload bytea NOT NULL,
@@ -71,16 +69,11 @@ export class PostgresStateStore {
           if (!documentId) throw new TypeError('documentId obrigatório.');
           if (!Buffer.isBuffer(payload)) throw new TypeError('Payload documental deve ser Buffer.');
           assertHexSha256(storedSha256);
-          await client.query(
-            `INSERT INTO central_juridica_document_blobs(document_id, payload, stored_sha256)
+          await client.query(`INSERT INTO central_juridica_document_blobs(document_id, payload, stored_sha256)
              VALUES($1,$2,$3)
-             ON CONFLICT(document_id) DO UPDATE SET payload=excluded.payload, stored_sha256=excluded.stored_sha256, updated_at=now()`,
-            [documentId, payload, storedSha256]
-          );
+             ON CONFLICT(document_id) DO UPDATE SET payload=excluded.payload, stored_sha256=excluded.stored_sha256, updated_at=now()`, [documentId, payload, storedSha256]);
         },
-        deleteDocumentBlob: async (documentId) => {
-          await client.query('DELETE FROM central_juridica_document_blobs WHERE document_id=$1', [documentId]);
-        }
+        deleteDocumentBlob: async (documentId) => client.query('DELETE FROM central_juridica_document_blobs WHERE document_id=$1', [documentId])
       };
       const output = await fn(tx);
       await client.query('UPDATE central_juridica_state SET state = $1::jsonb, updated_at = now() WHERE singleton = TRUE', [JSON.stringify(normalizeState(db))]);
@@ -89,20 +82,13 @@ export class PostgresStateStore {
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch {}
       throw error;
-    } finally {
-      client.release();
-    }
+    } finally { client.release(); }
   }
 
-  async mutate(fn) {
-    return this.transaction(({ state }) => fn(state));
-  }
+  async mutate(fn) { return this.transaction(({ state }) => fn(state)); }
 
   async readDocumentBlob(documentId) {
-    const result = await this.pool.query(
-      'SELECT payload, stored_sha256 FROM central_juridica_document_blobs WHERE document_id=$1',
-      [documentId]
-    );
+    const result = await this.pool.query('SELECT payload, stored_sha256 FROM central_juridica_document_blobs WHERE document_id=$1', [documentId]);
     if (!result.rows?.length) return null;
     const row = result.rows[0];
     const payload = Buffer.isBuffer(row.payload) ? row.payload : Buffer.from(row.payload || []);
@@ -125,9 +111,7 @@ export class PostgresStateStore {
   }
 
   async appendAudit(action, entity, entityId, requestId, detail = {}, actor = null) {
-    return this.mutate(db => {
-      db.auditLog.unshift({ id: `audit_${crypto.randomUUID()}`, action, entity, entityId, requestId, actor, detail, at: new Date().toISOString() });
-      db.auditLog = db.auditLog.slice(0, 5000);
-    });
+    const key = loadAuditKey();
+    return this.mutate(db => appendAuditEntry(db, { id: `audit_${crypto.randomUUID()}`, action, entity, entityId, requestId, actor, detail, at: new Date().toISOString() }, key));
   }
 }
