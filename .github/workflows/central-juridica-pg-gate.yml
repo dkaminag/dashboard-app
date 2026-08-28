@@ -67,6 +67,8 @@ jobs:
         run: set -o pipefail; npm run task-no-key-v2-4-regression | tee task-no-key-v2-4-evidence.json
       - name: Run v2.4 dedicated agreement gate
         run: set -o pipefail; npm run agreements-v2-4-gate | tee agreements-v2-4-evidence.json
+      - name: Run v2.5 dedicated execution gate
+        run: set -o pipefail; npm run executions-v2-5-gate | tee executions-v2-5-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,3 +86,4 @@ jobs:
             central-juridica-gate/processes-v2-3-evidence.json
             central-juridica-gate/task-no-key-v2-4-evidence.json
             central-juridica-gate/agreements-v2-4-evidence.json
+            central-juridica-gate/executions-v2-5-evidence.json
