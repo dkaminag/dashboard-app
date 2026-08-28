@@ -73,6 +73,8 @@ jobs:
         run: set -o pipefail; npm run finance-v2-6-gate | tee finance-v2-6-evidence.json
       - name: Run v2.7 dedicated preventive gate
         run: set -o pipefail; npm run preventive-v2-7-gate | tee preventive-v2-7-evidence.json
+      - name: Run v2.8 dedicated external evidence gate
+        run: set -o pipefail; npm run external-evidence-v2-8-gate | tee external-evidence-v2-8-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,3 +95,4 @@ jobs:
             central-juridica-gate/executions-v2-5-evidence.json
             central-juridica-gate/finance-v2-6-evidence.json
             central-juridica-gate/preventive-v2-7-evidence.json
+            central-juridica-gate/external-evidence-v2-8-evidence.json
