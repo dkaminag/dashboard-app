@@ -54,6 +54,8 @@ jobs:
         run: npm run audit-v2-gate | tee audit-v2-evidence.json
       - name: Run v2.1 dedicated idempotency gate
         run: npm run idempotency-v2-1-gate | tee idempotency-v2-1-evidence.json
+      - name: Run v2.2 dedicated task gate
+        run: npm run tasks-v2-2-gate | tee tasks-v2-2-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,3 +69,4 @@ jobs:
             central-juridica-gate/user-v1-9-evidence.json
             central-juridica-gate/audit-v2-evidence.json
             central-juridica-gate/idempotency-v2-1-evidence.json
+            central-juridica-gate/tasks-v2-2-evidence.json
