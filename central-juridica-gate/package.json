@@ -1,12 +1,13 @@
 {
   "name": "central-juridica-postgres-gate",
-  "version": "1.6.0-gate",
+  "version": "1.7.0-gate",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/postgres-store.mjs && node --check src/store.mjs && node --check src/audit-integrity.mjs && node --check src/backup.mjs && node --check src/keyring.mjs && node --check src/audit-integrity-v1-6.mjs && node --check src/crypto-storage-v1-6.mjs && node --check src/mfa-v1-6.mjs && node --check scripts/pg-concurrency-gate.mjs && node --check scripts/keyring-v1-6-gate.mjs",
+    "check": "node --check src/postgres-store.mjs && node --check src/store.mjs && node --check src/audit-integrity.mjs && node --check src/backup.mjs && node --check src/keyring.mjs && node --check src/audit-integrity-v1-6.mjs && node --check src/crypto-storage-v1-6.mjs && node --check src/mfa-v1-6.mjs && node --check src/rate-limit-v1-7.mjs && node --check src/client-ip-v1-7.mjs && node --check scripts/pg-concurrency-gate.mjs && node --check scripts/keyring-v1-6-gate.mjs && node --check scripts/rate-limit-v1-7-gate.mjs",
     "gate": "node scripts/pg-concurrency-gate.mjs",
-    "keyring-gate": "node scripts/keyring-v1-6-gate.mjs"
+    "keyring-gate": "node scripts/keyring-v1-6-gate.mjs",
+    "rate-limit-gate": "node scripts/rate-limit-v1-7-gate.mjs"
   },
   "engines": { "node": ">=22" },
   "dependencies": { "pg": "^8.16.0" }
