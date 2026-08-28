@@ -44,7 +44,7 @@ jobs:
       - name: Install driver
         run: npm install --no-audit --no-fund
       - name: Static check
-        run: npm run check
+        run: npm run check && node --check src/runtime-readiness-v3.mjs && node --check scripts/production-readiness-v3-gate.mjs
       - name: Run v1.5 regression gate
         run: set -o pipefail; npm run gate | tee gate-evidence.json
       - name: Run v1.6 keyring rotation gate
@@ -79,6 +79,8 @@ jobs:
         run: set -o pipefail; npm run clients-v2-9-gate | tee clients-v2-9-evidence.json
       - name: Run v3.0 dedicated document gate
         run: set -o pipefail; npm run documents-v3-gate | tee documents-v3-evidence.json
+      - name: Run v3.0 final production readiness gate
+        run: set -o pipefail; node scripts/production-readiness-v3-gate.mjs | tee production-readiness-v3-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,6 +104,7 @@ jobs:
             central-juridica-gate/external-evidence-v2-8-evidence.json
             central-juridica-gate/clients-v2-9-evidence.json
             central-juridica-gate/documents-v3-evidence.json
+            central-juridica-gate/production-readiness-v3-evidence.json
       - name: Upload reproducible dependency set
         uses: actions/upload-artifact@v4
         with:
