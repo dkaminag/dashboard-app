@@ -102,3 +102,11 @@ jobs:
             central-juridica-gate/external-evidence-v2-8-evidence.json
             central-juridica-gate/clients-v2-9-evidence.json
             central-juridica-gate/documents-v3-evidence.json
+      - name: Upload reproducible dependency set
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-node22-pg-deps
+          path: |
+            central-juridica-gate/package-lock.json
+            central-juridica-gate/node_modules
+          compression-level: 6
