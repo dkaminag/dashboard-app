@@ -1,0 +1,22 @@
+const clone = value => structuredClone(value);
+const FORBIDDEN_PAYLOAD_KEYS_SQL = ['body','content','raw','snippet','html','text','attachment','attachments','attachmentData','fileContent','messageBody','descriptionFull'].map(key => `'${key}'`).join(',');
+
+export async function ensureExternalEvidenceTable(q){
+  await q.query(`CREATE TABLE IF NOT EXISTS central_juridica_external_evidence(
+    evidence_id text PRIMARY KEY,provider text NOT NULL,external_id text NOT NULL,kind text NOT NULL,status text NOT NULL,
+    process_id text NULL,proposed_process_id text NULL,occurred_at timestamptz NOT NULL,
+    metadata_hash char(64) NOT NULL CHECK(metadata_hash ~ '^[0-9a-f]{64}$'),
+    payload jsonb NOT NULL CHECK(NOT(payload ?| ARRAY[${FORBIDDEN_PAYLOAD_KEYS_SQL}])),
+    ingested_at timestamptz NOT NULL,reviewed_at timestamptz NULL,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,
+    UNIQUE(provider,external_id))`);
+  await q.query('CREATE INDEX IF NOT EXISTS central_juridica_external_evidence_status_occurred_idx ON central_juridica_external_evidence(status,occurred_at DESC)');
+  await q.query('CREATE INDEX IF NOT EXISTS central_juridica_external_evidence_process_idx ON central_juridica_external_evidence(process_id)');
+  await q.query('CREATE INDEX IF NOT EXISTS central_juridica_external_evidence_proposed_process_idx ON central_juridica_external_evidence(proposed_process_id)');
+}
+export async function readExternalEvidence(q){const r=await q.query('SELECT payload FROM central_juridica_external_evidence ORDER BY ingested_at DESC, evidence_id DESC');return(r.rows||[]).map(x=>clone(x.payload));}
+export async function findExternalEvidenceById(q,id,{forUpdate=false}={}){const r=await q.query(`SELECT payload FROM central_juridica_external_evidence WHERE evidence_id=$1${forUpdate?' FOR UPDATE':''}`,[id]);return r.rows?.length?clone(r.rows[0].payload):null;}
+export async function findExternalEvidenceByProviderExternalId(q,provider,externalId){const r=await q.query('SELECT payload FROM central_juridica_external_evidence WHERE provider=$1 AND external_id=$2',[provider,externalId]);return r.rows?.length?clone(r.rows[0].payload):null;}
+const vals=x=>[x.id,x.provider,x.externalId,x.kind,x.status,x.processId||null,x.proposedProcessId||null,x.occurredAt,x.metadataHash,JSON.stringify(x),x.ingestedAt,x.reviewedAt||null,x.createdAt||x.ingestedAt,x.updatedAt||x.reviewedAt||x.ingestedAt];
+export async function insertExternalEvidence(q,x){await q.query(`INSERT INTO central_juridica_external_evidence(evidence_id,provider,external_id,kind,status,process_id,proposed_process_id,occurred_at,metadata_hash,payload,ingested_at,reviewed_at,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9,$10::jsonb,$11::timestamptz,$12::timestamptz,$13::timestamptz,$14::timestamptz)`,vals(x));return clone(x);}
+export async function updateExternalEvidence(q,x){const r=await q.query(`UPDATE central_juridica_external_evidence SET provider=$2,external_id=$3,kind=$4,status=$5,process_id=$6,proposed_process_id=$7,occurred_at=$8::timestamptz,metadata_hash=$9,payload=$10::jsonb,ingested_at=$11::timestamptz,reviewed_at=$12::timestamptz,updated_at=$13::timestamptz WHERE evidence_id=$1`,[x.id,x.provider,x.externalId,x.kind,x.status,x.processId||null,x.proposedProcessId||null,x.occurredAt,x.metadataHash,JSON.stringify(x),x.ingestedAt,x.reviewedAt||null,x.updatedAt||x.reviewedAt||x.ingestedAt]);if(Number(r.rowCount||0)!==1)throw new Error('EXTERNAL_EVIDENCE_NOT_FOUND');return clone(x);}
+export async function migrateLegacyExternalEvidence(pool){const c=await pool.connect();try{await c.query('BEGIN');await ensureExternalEvidenceTable(c);const selected=await c.query('SELECT state FROM central_juridica_state WHERE singleton=TRUE FOR UPDATE');if(!selected.rows?.length)throw new Error('STATE_MISSING');const db=structuredClone(selected.rows[0].state||{}),items=Array.isArray(db.externalEvidence)?db.externalEvidence:[],dedicated=await readExternalEvidence(c);if(!dedicated.length)for(const x of items)await insertExternalEvidence(c,x);else if(items.length){const ids=new Set(dedicated.map(x=>x.id));if(items.some(x=>!ids.has(x.id)))throw new Error('EXTERNAL_EVIDENCE_MIGRATION_CONFLICT');}db.externalEvidence=[];await c.query('UPDATE central_juridica_state SET state=$1::jsonb,updated_at=now() WHERE singleton=TRUE',[JSON.stringify(db)]);await c.query('COMMIT');return{migrated:items.length};}catch(e){try{await c.query('ROLLBACK');}catch{}throw e;}finally{c.release();}}
