@@ -10,7 +10,8 @@ try{
  const runtime=evaluateRuntimeReadiness({production:true,postgres:true,documentStoragePostgres:true,documentKeyring:true,backupKeyring:true,secureCookie:true,mfaPolicyCompliant:true,requestSecurity:true,auditIntegrity:true,capabilities});
  if(!runtime.ready)throw new Error(`PRODUCTION_READINESS_FAILED:${runtime.missing.join(',')}`);
  const state=(await pool.query("select state from central_juridica_state where singleton=true")).rows[0]?.state||{};
- const outsideJsonb=['users','clients','documents','tasks','processes','agreements','executionActions','financialEntries','preventiveAssessments','externalEvidence'].every(k=>Array.isArray(state[k])&&state[k].length===0);
- if(!outsideJsonb)throw new Error('NORMALIZED_DOMAIN_STILL_PRESENT_IN_JSONB');
- console.log(JSON.stringify({ok:true,evidence:{postgresVersion:version,requiredCapabilities:REQUIRED_CAPABILITIES.length,allCapabilitiesReady:true,normalizedDomainOutsideJsonb:true,runtime}},null,2));
+ const normalizedKeys=['users','clients','documents','tasks','processes','agreements','executionActions','financialEntries','preventiveAssessments','externalEvidence'];
+ const residual=normalizedKeys.filter(k=>state[k]!=null&&(!Array.isArray(state[k])||state[k].length!==0));
+ if(residual.length)throw new Error(`NORMALIZED_DOMAIN_STILL_PRESENT_IN_JSONB:${residual.join(',')}`);
+ console.log(JSON.stringify({ok:true,evidence:{postgresVersion:version,requiredCapabilities:REQUIRED_CAPABILITIES.length,allCapabilitiesReady:true,normalizedDomainOutsideJsonb:true,normalizedKeys,runtime}},null,2));
 }catch(error){console.error(JSON.stringify({ok:false,error:{message:error.message,stack:error.stack}},null,2));process.exitCode=1;}finally{await pool.end();}
