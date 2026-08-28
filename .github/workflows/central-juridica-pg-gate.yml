@@ -16,6 +16,7 @@ concurrency:
 jobs:
   postgres-concurrency-gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:17-alpine
@@ -45,23 +46,23 @@ jobs:
       - name: Static check
         run: npm run check
       - name: Run v1.5 regression gate
-        run: npm run gate | tee gate-evidence.json
+        run: set -o pipefail; npm run gate | tee gate-evidence.json
       - name: Run v1.6 keyring rotation gate
-        run: npm run keyring-gate | tee keyring-v1-6-evidence.json
+        run: set -o pipefail; npm run keyring-gate | tee keyring-v1-6-evidence.json
       - name: Run v1.7 shared rate limit gate
-        run: npm run rate-limit-gate | tee rate-limit-v1-7-evidence.json
+        run: set -o pipefail; npm run rate-limit-gate | tee rate-limit-v1-7-evidence.json
       - name: Run v1.8 dedicated session gate
-        run: npm run session-gate | tee session-v1-8-evidence.json
+        run: set -o pipefail; npm run session-gate | tee session-v1-8-evidence.json
       - name: Run v1.9 dedicated user gate
-        run: npm run user-gate | tee user-v1-9-evidence.json
+        run: set -o pipefail; npm run user-gate | tee user-v1-9-evidence.json
       - name: Run v2.0 dedicated audit gate
-        run: npm run audit-v2-gate | tee audit-v2-evidence.json
+        run: set -o pipefail; npm run audit-v2-gate | tee audit-v2-evidence.json
       - name: Run v2.1 dedicated idempotency gate
-        run: npm run idempotency-v2-1-gate | tee idempotency-v2-1-evidence.json
+        run: set -o pipefail; npm run idempotency-v2-1-gate | tee idempotency-v2-1-evidence.json
       - name: Run v2.2 dedicated task gate
-        run: npm run tasks-v2-2-gate | tee tasks-v2-2-evidence.json
+        run: set -o pipefail; npm run tasks-v2-2-gate | tee tasks-v2-2-evidence.json
       - name: Run v2.3 dedicated process gate
-        run: npm run processes-v2-3-gate | tee processes-v2-3-evidence.json
+        run: set -o pipefail; npm run processes-v2-3-gate | tee processes-v2-3-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
