@@ -9,6 +9,10 @@ on:
       - ".github/workflows/central-juridica-pg-gate.yml"
   workflow_dispatch:
 
+concurrency:
+  group: central-juridica-pg-gate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   postgres-concurrency-gate:
     runs-on: ubuntu-latest
