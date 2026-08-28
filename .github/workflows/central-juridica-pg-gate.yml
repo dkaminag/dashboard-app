@@ -46,6 +46,8 @@ jobs:
         run: npm run keyring-gate | tee keyring-v1-6-evidence.json
       - name: Run v1.7 shared rate limit gate
         run: npm run rate-limit-gate | tee rate-limit-v1-7-evidence.json
+      - name: Run v1.8 dedicated session gate
+        run: npm run session-gate | tee session-v1-8-evidence.json
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,3 +57,4 @@ jobs:
             central-juridica-gate/gate-evidence.json
             central-juridica-gate/keyring-v1-6-evidence.json
             central-juridica-gate/rate-limit-v1-7-evidence.json
+            central-juridica-gate/session-v1-8-evidence.json
