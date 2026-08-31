@@ -1,0 +1,39 @@
+name: Central Juridica Environment Preflight
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-env-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      HAS_DATABASE: ${{ secrets.CJ_DATABASE_URL != '' }}
+      HAS_ADMIN_PASSWORD: ${{ secrets.CJ_ADMIN_PASSWORD != '' }}
+      HAS_VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
+      HAS_VERCEL_ORG: ${{ secrets.VERCEL_ORG_ID != '' }}
+      HAS_VERCEL_PROJECT: ${{ secrets.VERCEL_PROJECT_ID != '' }}
+      HAS_DOCUMENT_KEYRING: ${{ secrets.CJ_DOCUMENT_KEYRING != '' }}
+      HAS_AUDIT_KEYRING: ${{ secrets.CJ_AUDIT_KEYRING != '' }}
+      HAS_MFA_KEYRING: ${{ secrets.CJ_MFA_KEYRING != '' }}
+      HAS_BACKUP_KEYRING: ${{ secrets.CJ_BACKUP_KEYRING != '' }}
+      HAS_IDEMPOTENCY_KEY: ${{ secrets.CJ_IDEMPOTENCY_KEY != '' }}
+    steps:
+      - name: Report secret availability without values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DATABASE ADMIN_PASSWORD VERCEL_TOKEN VERCEL_ORG VERCEL_PROJECT DOCUMENT_KEYRING AUDIT_KEYRING MFA_KEYRING BACKUP_KEYRING IDEMPOTENCY_KEY; do
+            var="HAS_${name}"
+            printf '%s=%s\n' "$name" "${!var}"
+          done
+          if [[ "$HAS_DATABASE" == "true" ]]; then echo "DATABASE_BRIDGE=AVAILABLE"; else echo "DATABASE_BRIDGE=MISSING"; fi
+          if [[ "$HAS_VERCEL_TOKEN" == "true" && "$HAS_VERCEL_ORG" == "true" && "$HAS_VERCEL_PROJECT" == "true" ]]; then echo "VERCEL_CLI_BRIDGE=AVAILABLE"; else echo "VERCEL_CLI_BRIDGE=MISSING"; fi
