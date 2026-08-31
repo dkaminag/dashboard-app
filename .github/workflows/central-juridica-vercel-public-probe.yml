@@ -22,15 +22,28 @@ jobs:
           TARGET_URL: "https://central-juridica-protection-probe-qh0801e8s-dkaminag-2666.vercel.app/"
         run: |
           set -euo pipefail
-          headers="$(mktemp)"
-          body="$(mktemp)"
-          code="$(curl --silent --show-error --location --max-redirs 3 --connect-timeout 10 --max-time 20 --dump-header "$headers" --output "$body" --write-out '%{http_code}' "$TARGET_URL")"
-          test "$code" = "200"
-          grep -q 'STANDARD_PROTECTION_PUBLIC_REACHABILITY_OK' "$body"
-          if grep -qi 'vercel.com/sso-api' "$headers" "$body"; then
-            echo 'Unexpected Vercel SSO interception' >&2
-            exit 1
-          fi
+          h1="$(mktemp)"
+          b1="$(mktemp)"
+          initial_code="$(curl --silent --show-error --connect-timeout 10 --max-time 20 --dump-header "$h1" --output "$b1" --write-out '%{http_code}' "$TARGET_URL")"
+          location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{print $2}' "$h1" | tr -d '\r' | head -n1 || true)"
+          location_host="$(printf '%s' "$location" | sed -E 's#^https?://([^/]+).*$#\1#' | cut -c1-160)"
+          echo "INITIAL_HTTP_STATUS=$initial_code"
+          echo "REDIRECT_HOST=${location_host:-none}"
+
+          h2="$(mktemp)"
+          b2="$(mktemp)"
+          read -r final_code final_url < <(curl --silent --show-error --location --max-redirs 3 --connect-timeout 10 --max-time 20 --dump-header "$h2" --output "$b2" --write-out '%{http_code} %{url_effective}' "$TARGET_URL")
+          echo "FINAL_HTTP_STATUS=$final_code"
+          echo "FINAL_HOST=$(printf '%s' "$final_url" | sed -E 's#^https?://([^/]+).*$#\1#' | cut -c1-160)"
+
+          sso=false
+          if grep -qi 'vercel.com/sso-api' "$h1" "$h2" "$b1" "$b2"; then sso=true; fi
+          echo "SSO_INTERCEPTION=$sso"
+          marker=false
+          if grep -q 'STANDARD_PROTECTION_PUBLIC_REACHABILITY_OK' "$b2"; then marker=true; fi
+          echo "EXPECTED_MARKER=$marker"
+
+          test "$final_code" = "200"
+          test "$marker" = "true"
+          test "$sso" = "false"
           echo "PUBLIC_HTTPS_GATE=PASS"
-          echo "HTTP_STATUS=$code"
-          echo "SSO_INTERCEPTION=false"
