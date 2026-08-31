@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Probe primary production domain anonymously
+      - name: Probe Central Juridica v3 cutover primary domain anonymously
         shell: bash
         env:
-          TARGET_URL: "https://central-juridica-protection-probe.vercel.app/"
+          TARGET_URL: "https://central-juridica-v3-cutover-dkaminag-2666.vercel.app/"
         run: |
           set -euo pipefail
           h1="$(mktemp)"
@@ -33,7 +33,7 @@ jobs:
           if grep -qi 'vercel.com/sso-api' "$h1" "$b1"; then sso=true; fi
           echo "SSO_INTERCEPTION=$sso"
           marker=false
-          if grep -q 'STANDARD_PROTECTION_PRODUCTION_PUBLIC_OK' "$b1"; then marker=true; fi
+          if grep -q 'CENTRAL_JURIDICA_V3_CUTOVER_PROBE' "$b1"; then marker=true; fi
           echo "EXPECTED_MARKER=$marker"
           test "$initial_code" = "200"
           test "$marker" = "true"
