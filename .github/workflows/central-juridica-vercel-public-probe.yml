@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Probe Standard Protection anonymously
+      - name: Probe production alias anonymously
         shell: bash
         env:
-          TARGET_URL: "https://central-juridica-protection-probe-qh0801e8s-dkaminag-2666.vercel.app/"
+          TARGET_URL: "https://central-juridica-protection-probe-dkaminag-2666.vercel.app/"
         run: |
           set -euo pipefail
           h1="$(mktemp)"
@@ -32,18 +32,23 @@ jobs:
 
           h2="$(mktemp)"
           b2="$(mktemp)"
-          read -r final_code final_url < <(curl --silent --show-error --location --max-redirs 3 --connect-timeout 10 --max-time 20 --dump-header "$h2" --output "$b2" --write-out '%{http_code} %{url_effective}' "$TARGET_URL")
-          echo "FINAL_HTTP_STATUS=$final_code"
-          echo "FINAL_HOST=$(printf '%s' "$final_url" | sed -E 's#^https?://([^/]+).*$#\1#' | cut -c1-160)"
+          set +e
+          final_meta="$(curl --silent --show-error --location --max-redirs 3 --connect-timeout 10 --max-time 20 --dump-header "$h2" --output "$b2" --write-out '%{http_code} %{url_effective}' "$TARGET_URL")"
+          curl_rc=$?
+          set -e
+          read -r final_code final_url <<< "$final_meta"
+          echo "CURL_RC=$curl_rc"
+          echo "FINAL_HTTP_STATUS=${final_code:-none}"
+          echo "FINAL_HOST=$(printf '%s' "${final_url:-}" | sed -E 's#^https?://([^/]+).*$#\1#' | cut -c1-160)"
 
           sso=false
           if grep -qi 'vercel.com/sso-api' "$h1" "$h2" "$b1" "$b2"; then sso=true; fi
           echo "SSO_INTERCEPTION=$sso"
           marker=false
-          if grep -q 'STANDARD_PROTECTION_PUBLIC_REACHABILITY_OK' "$b2"; then marker=true; fi
+          if grep -q 'STANDARD_PROTECTION_PRODUCTION_PUBLIC_OK' "$b1" "$b2"; then marker=true; fi
           echo "EXPECTED_MARKER=$marker"
 
-          test "$final_code" = "200"
+          test "$initial_code" = "200"
           test "$marker" = "true"
           test "$sso" = "false"
           echo "PUBLIC_HTTPS_GATE=PASS"
