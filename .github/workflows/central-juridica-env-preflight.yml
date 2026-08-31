@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
 
+# Cutover preflight refresh 2026-08-31
 jobs:
   preflight:
     runs-on: ubuntu-latest
