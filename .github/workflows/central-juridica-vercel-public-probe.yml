@@ -1,0 +1,36 @@
+name: Central Juridica Vercel Public Probe
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-vercel-public-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe Standard Protection anonymously
+        shell: bash
+        env:
+          TARGET_URL: "https://central-juridica-protection-probe-qh0801e8s-dkaminag-2666.vercel.app/"
+        run: |
+          set -euo pipefail
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          code="$(curl --silent --show-error --location --max-redirs 3 --connect-timeout 10 --max-time 20 --dump-header "$headers" --output "$body" --write-out '%{http_code}' "$TARGET_URL")"
+          test "$code" = "200"
+          grep -q 'STANDARD_PROTECTION_PUBLIC_REACHABILITY_OK' "$body"
+          if grep -qi 'vercel.com/sso-api' "$headers" "$body"; then
+            echo 'Unexpected Vercel SSO interception' >&2
+            exit 1
+          fi
+          echo "PUBLIC_HTTPS_GATE=PASS"
+          echo "HTTP_STATUS=$code"
+          echo "SSO_INTERCEPTION=false"
