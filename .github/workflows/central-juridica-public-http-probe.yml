@@ -1,0 +1,53 @@
+name: Central Juridica Public HTTPS Probe
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-public-http-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  anonymous-public-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROBE_URL: https://central-juridica-public-probe-20260901-c7hhb3jue-dkaminag-2666.vercel.app/
+    steps:
+      - name: Anonymous HTTPS probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f headers.txt body.txt evidence.json
+          status="000"
+          for attempt in $(seq 1 12); do
+            status=$(curl --max-time 20 --silent --show-error --output body.txt --dump-header headers.txt --write-out '%{http_code}' "$PROBE_URL" || true)
+            printf 'attempt=%s status=%s\n' "$attempt" "$status"
+            if [ "$status" = "200" ] && grep -q 'central-juridica-public-probe' body.txt; then
+              break
+            fi
+            sleep 5
+          done
+          location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' headers.txt || true)
+          content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' headers.txt || true)
+          body_sha=$(sha256sum body.txt | awk '{print $1}')
+          python - <<'PY'
+          import json, os
+          status=os.environ.get('STATUS')
+          PY
+          printf '{"url":"%s","status":%s,"location":"%s","contentType":"%s","bodySha256":"%s","marker":%s}\n' \
+            "$PROBE_URL" "$status" "${location//\"/\\\"}" "${content_type//\"/\\\"}" "$body_sha" \
+            "$(grep -q 'central-juridica-public-probe' body.txt && echo true || echo false)" > evidence.json
+          cat evidence.json
+          test "$status" = "200"
+          grep -q 'central-juridica-public-probe' body.txt
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-public-http-probe
+          path: |
+            headers.txt
+            body.txt
+            evidence.json
