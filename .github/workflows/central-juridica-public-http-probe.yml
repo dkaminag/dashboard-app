@@ -13,9 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      PROBE_URL: https://central-juridica-public-probe-20260901-qc1mleag5-dkaminag-2666.vercel.app/
+      PROBE_URL: https://central-juridica-public-probe-20260901-dkaminag-2666.vercel.app/
     steps:
-      - name: Anonymous HTTPS production probe
+      - name: Anonymous primary production alias probe
         shell: bash
         run: |
           set -euo pipefail
@@ -32,7 +32,7 @@ jobs:
           location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' headers.txt || true)
           content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' headers.txt || true)
           body_sha=$(sha256sum body.txt | awk '{print $1}')
-          printf '{"url":"%s","target":"production","status":%s,"location":"%s","contentType":"%s","bodySha256":"%s","marker":%s}\n' \
+          printf '{"url":"%s","target":"primary-production-alias","status":%s,"location":"%s","contentType":"%s","bodySha256":"%s","marker":%s}\n' \
             "$PROBE_URL" "$status" "${location//\"/\\\"}" "${content_type//\"/\\\"}" "$body_sha" \
             "$(grep -q 'central-juridica-public-probe' body.txt && grep -q 'production' body.txt && echo true || echo false)" > evidence.json
           cat evidence.json
@@ -43,7 +43,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: central-juridica-public-http-production-probe
+          name: central-juridica-public-http-primary-production-alias-probe
           path: |
             headers.txt
             body.txt
