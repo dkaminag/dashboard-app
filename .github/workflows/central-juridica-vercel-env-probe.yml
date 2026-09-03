@@ -1,4 +1,4 @@
-name: Central Juridica Vercel Production Probe
+name: Central Juridica Vercel Standard Protection Reuse Probe
 
 on:
   push:
@@ -13,25 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe production unique URL and primary alias
+      - name: Probe known public primary production domain
         shell: bash
         run: |
           set -euo pipefail
-          probe() {
-            label="$1"; url="$2"
-            rm -f "${label}.headers" "${label}.body"
-            code=$(curl -sS --max-time 30 -D "${label}.headers" -o "${label}.body" -w '%{http_code}' "$url" || true)
-            location=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"",$2); print $2; exit}' "${label}.headers" || true)
-            echo "${label}_HTTP=$code"
-            echo "${label}_LOCATION=${location:-none}"
-            echo "${label}_BODY_PREFIX=$(head -c 240 "${label}.body" | tr '\n' ' ' || true)"
-          }
-          probe UNIQUE 'https://central-juridica-v3-public-probe-e822h38go-dkaminag-2666.vercel.app/'
-          probe ALIAS 'https://central-juridica-v3-public-probe-dkaminag-2666.vercel.app/'
-          test "$(awk 'NR==1{print $2}' ALIAS.headers)" = '200'
-          ! grep -Eqi '^location:.*vercel\.com' ALIAS.headers
-          grep -q 'CJ_PRODUCTION_PROBE_OK' ALIAS.body
-          grep -Eq '"env"[[:space:]]*:[[:space:]]*true' ALIAS.body
+          URL='https://central-juridica-protection-probe.vercel.app/'
+          rm -f headers.txt body.txt
+          code=$(curl -sS --max-time 30 -D headers.txt -o body.txt -w '%{http_code}' "$URL")
+          location=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"",$2); print $2; exit}' headers.txt || true)
+          echo "HTTP_INITIAL=$code"
+          echo "LOCATION=${location:-none}"
+          echo "BODY_PREFIX=$(head -c 240 body.txt | tr '\n' ' ' || true)"
+          test "$code" = '200'
+          ! grep -Eqi '^location:.*vercel\.com' headers.txt
+          grep -q 'CJ_REUSE_STANDARD_PROTECTION_OK' body.txt
+          grep -Eq '"env"[[:space:]]*:[[:space:]]*true' body.txt
           echo 'PRIMARY_ALIAS_PUBLIC_HTTPS=PASS'
           echo 'FUNCTION_RUNTIME=PASS'
           echo 'ENV_INJECTION=PASS'
