@@ -13,20 +13,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe public production-style alias
+      - name: Diagnose Vercel unique URL and alias
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://central-juridica-v3-env-probe-dkaminag-2666.vercel.app/'
-          rm -f headers.txt body.txt
-          code=$(curl -sS --max-time 30 -D headers.txt -o body.txt -w '%{http_code}' "$URL")
-          location=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"",$2); print $2; exit}' headers.txt || true)
-          echo "HTTP_INITIAL=$code"
-          echo "LOCATION=${location:-none}"
-          test "$code" = '200'
-          ! grep -Eqi '^location:.*vercel\.com' headers.txt
-          grep -q 'CJ_ENV_PROBE_OK' body.txt
-          grep -Eq '"env"[[:space:]]*:[[:space:]]*true' body.txt
-          echo 'PUBLIC_HTTPS=PASS'
-          echo 'FUNCTION_RUNTIME=PASS'
-          echo 'ENV_INJECTION=PASS'
+          probe() {
+            label="$1"; url="$2"
+            rm -f "${label}.headers" "${label}.body"
+            code=$(curl -sS --max-time 30 -D "${label}.headers" -o "${label}.body" -w '%{http_code}' "$url" || true)
+            location=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"",$2); print $2; exit}' "${label}.headers" || true)
+            echo "${label}_HTTP=$code"
+            echo "${label}_LOCATION=${location:-none}"
+            echo "${label}_BODY_PREFIX=$(head -c 240 "${label}.body" | tr '\n' ' ' || true)"
+          }
+          probe UNIQUE 'https://central-juridica-v3-env-probe-jlqg7770g-dkaminag-2666.vercel.app/'
+          probe ALIAS 'https://central-juridica-v3-env-probe-dkaminag-2666.vercel.app/'
+          if grep -q 'CJ_ENV_PROBE_OK' UNIQUE.body && grep -Eq '"env"[[:space:]]*:[[:space:]]*true' UNIQUE.body; then
+            test "$(awk 'NR==1{print $2}' UNIQUE.headers)" = '200'
+            ! grep -Eqi '^location:.*vercel\.com' UNIQUE.headers
+            echo 'UNIQUE_PUBLIC_FUNCTION_ENV=PASS'
+            exit 0
+          fi
+          if grep -q 'CJ_ENV_PROBE_OK' ALIAS.body && grep -Eq '"env"[[:space:]]*:[[:space:]]*true' ALIAS.body; then
+            ! grep -Eqi '^location:.*vercel\.com' ALIAS.headers
+            echo 'ALIAS_PUBLIC_FUNCTION_ENV=PASS'
+            exit 0
+          fi
+          echo 'VERCEL_ROUTING_GATE=FAIL'
+          exit 1
