@@ -1,0 +1,55 @@
+name: Central Juridica Vercel Project Diagnostic
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-vercel-project-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TEAM_ID: team_6yEx8FtCzh3MwBub7Ka74F3p
+      PROJECT_NAME: central-juridica-protection-probe
+    steps:
+      - name: Fail closed if Vercel token is unavailable
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          echo 'VERCEL_TOKEN_PRESENT=PASS'
+      - name: Resolve project and protection settings
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer $VERCEL_TOKEN")
+          base="https://api.vercel.com"
+          curl -fsS "${auth[@]}" "$base/v9/projects/$PROJECT_NAME?teamId=$VERCEL_TEAM_ID" -o project.json
+          jq '{id,name,accountId,framework,nodeVersion,publicSource,protectionBypass,oidcTokenConfig,targets,updatedAt}' project.json
+          project_id=$(jq -r '.id' project.json)
+          test -n "$project_id" && test "$project_id" != null
+          curl -fsS "${auth[@]}" "$base/v9/projects/$project_id/domains?teamId=$VERCEL_TEAM_ID" -o domains.json
+          jq '{domains:[.domains[]? | {name,verified,redirect,redirectStatusCode,gitBranch,customEnvironmentId}]}' domains.json
+          printf '%s' "$project_id" > project-id.txt
+          echo "PROJECT_RESOLVED=PASS"
+      - name: Inspect Production env keys only
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          project_id=$(cat project-id.txt)
+          curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$project_id/env?teamId=$VERCEL_TEAM_ID" -o env.json
+          jq '{productionEnvKeys:[.envs[]? | select((.target // []) | index("production")) | .key] | sort}' env.json
+          echo 'ENV_KEYS_INSPECTED_WITHOUT_VALUES=PASS'
