@@ -1,0 +1,32 @@
+name: Central Juridica Vercel Env Probe
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-vercel-env-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public production-style alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://central-juridica-v3-env-probe-dkaminag-2666.vercel.app/'
+          rm -f headers.txt body.txt
+          code=$(curl -sS --max-time 30 -D headers.txt -o body.txt -w '%{http_code}' "$URL")
+          location=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"",$2); print $2; exit}' headers.txt || true)
+          echo "HTTP_INITIAL=$code"
+          echo "LOCATION=${location:-none}"
+          test "$code" = '200'
+          ! grep -Eqi '^location:.*vercel\.com' headers.txt
+          grep -q 'CJ_ENV_PROBE_OK' body.txt
+          grep -Eq '"env"[[:space:]]*:[[:space:]]*true' body.txt
+          echo 'PUBLIC_HTTPS=PASS'
+          echo 'FUNCTION_RUNTIME=PASS'
+          echo 'ENV_INJECTION=PASS'
