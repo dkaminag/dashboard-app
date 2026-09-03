@@ -1,4 +1,4 @@
-name: Central Juridica Vercel Env Probe
+name: Central Juridica Vercel Production Probe
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Diagnose Vercel unique URL and alias
+      - name: Probe production unique URL and primary alias
         shell: bash
         run: |
           set -euo pipefail
@@ -26,18 +26,12 @@ jobs:
             echo "${label}_LOCATION=${location:-none}"
             echo "${label}_BODY_PREFIX=$(head -c 240 "${label}.body" | tr '\n' ' ' || true)"
           }
-          probe UNIQUE 'https://central-juridica-v3-env-probe-jlqg7770g-dkaminag-2666.vercel.app/'
-          probe ALIAS 'https://central-juridica-v3-env-probe-dkaminag-2666.vercel.app/'
-          if grep -q 'CJ_ENV_PROBE_OK' UNIQUE.body && grep -Eq '"env"[[:space:]]*:[[:space:]]*true' UNIQUE.body; then
-            test "$(awk 'NR==1{print $2}' UNIQUE.headers)" = '200'
-            ! grep -Eqi '^location:.*vercel\.com' UNIQUE.headers
-            echo 'UNIQUE_PUBLIC_FUNCTION_ENV=PASS'
-            exit 0
-          fi
-          if grep -q 'CJ_ENV_PROBE_OK' ALIAS.body && grep -Eq '"env"[[:space:]]*:[[:space:]]*true' ALIAS.body; then
-            ! grep -Eqi '^location:.*vercel\.com' ALIAS.headers
-            echo 'ALIAS_PUBLIC_FUNCTION_ENV=PASS'
-            exit 0
-          fi
-          echo 'VERCEL_ROUTING_GATE=FAIL'
-          exit 1
+          probe UNIQUE 'https://central-juridica-v3-public-probe-e822h38go-dkaminag-2666.vercel.app/'
+          probe ALIAS 'https://central-juridica-v3-public-probe-dkaminag-2666.vercel.app/'
+          test "$(awk 'NR==1{print $2}' ALIAS.headers)" = '200'
+          ! grep -Eqi '^location:.*vercel\.com' ALIAS.headers
+          grep -q 'CJ_PRODUCTION_PROBE_OK' ALIAS.body
+          grep -Eq '"env"[[:space:]]*:[[:space:]]*true' ALIAS.body
+          echo 'PRIMARY_ALIAS_PUBLIC_HTTPS=PASS'
+          echo 'FUNCTION_RUNTIME=PASS'
+          echo 'ENV_INJECTION=PASS'
