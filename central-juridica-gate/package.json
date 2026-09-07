@@ -1,6 +1,6 @@
 {
   "name": "central-juridica-postgres-gate",
-  "version": "3.0.0-gate",
+  "version": "3.0.1-gate",
   "private": true,
   "type": "module",
   "scripts": {
