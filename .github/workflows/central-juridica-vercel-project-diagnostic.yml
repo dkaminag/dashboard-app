@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 5
     env:
       VERCEL_TEAM_ID: team_6yEx8FtCzh3MwBub7Ka74F3p
-      PROJECT_NAME: central-juridica-protection-probe
+      PROJECT_NAME: central-juridica-v3-public
     steps:
       - name: Fail closed if Vercel token is unavailable
         shell: bash
@@ -27,23 +27,22 @@ jobs:
           set -euo pipefail
           test -n "$VERCEL_TOKEN"
           echo 'VERCEL_TOKEN_PRESENT=PASS'
-      - name: Resolve project and protection settings
+      - name: Resolve project and domains
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          auth=(-H "Authorization: Bearer $VERCEL_TOKEN")
           base="https://api.vercel.com"
-          curl -fsS "${auth[@]}" "$base/v9/projects/$PROJECT_NAME?teamId=$VERCEL_TEAM_ID" -o project.json
-          jq '{id,name,accountId,framework,nodeVersion,publicSource,protectionBypass,oidcTokenConfig,targets,updatedAt}' project.json
+          curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" "$base/v9/projects/$PROJECT_NAME?teamId=$VERCEL_TEAM_ID" -o project.json
+          jq '{id,name,accountId,framework,nodeVersion,updatedAt}' project.json
           project_id=$(jq -r '.id' project.json)
           test -n "$project_id" && test "$project_id" != null
-          curl -fsS "${auth[@]}" "$base/v9/projects/$project_id/domains?teamId=$VERCEL_TEAM_ID" -o domains.json
-          jq '{domains:[.domains[]? | {name,verified,redirect,redirectStatusCode,gitBranch,customEnvironmentId}]}' domains.json
+          curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" "$base/v9/projects/$project_id/domains?teamId=$VERCEL_TEAM_ID" -o domains.json
+          jq '{domains:[.domains[]? | {name,verified,redirect,gitBranch}]}' domains.json
           printf '%s' "$project_id" > project-id.txt
-          echo "PROJECT_RESOLVED=PASS"
-      - name: Inspect Production env keys only
+          echo 'PROJECT_RESOLVED=PASS'
+      - name: Inspect production env key names only
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
