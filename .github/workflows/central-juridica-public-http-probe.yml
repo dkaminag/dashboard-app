@@ -13,38 +13,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      PROBE_URL: https://central-juridica-public-probe-20260901-dkaminag-2666.vercel.app/
+      BASE_URL: https://central-juridica-v3-public.vercel.app
     steps:
-      - name: Anonymous primary production alias probe
+      - name: Probe root health and readiness anonymously
         shell: bash
         run: |
           set -euo pipefail
-          rm -f headers.txt body.txt evidence.json
-          status="000"
-          for attempt in $(seq 1 12); do
-            status=$(curl --max-time 20 --silent --show-error --output body.txt --dump-header headers.txt --write-out '%{http_code}' "$PROBE_URL" || true)
-            printf 'attempt=%s status=%s\n' "$attempt" "$status"
-            if [ "$status" = "200" ] && grep -q 'central-juridica-public-probe' body.txt && grep -q 'production' body.txt; then
-              break
-            fi
-            sleep 5
+          rm -f probe-evidence.jsonl
+          for path in / /api/health /api/ready; do
+            safe=$(echo "$path" | tr '/?' '__')
+            headers="headers${safe}.txt"
+            body="body${safe}.txt"
+            status=$(curl --max-time 20 --silent --show-error --output "$body" --dump-header "$headers" --write-out '%{http_code}' "${BASE_URL}${path}" || true)
+            location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' "$headers" || true)
+            content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' "$headers" || true)
+            body_sha=$(sha256sum "$body" | awk '{print $1}')
+            sso=false
+            if grep -Eqi 'vercel\.com/(sso|login)|authentication required|vercel authentication' "$headers" "$body"; then sso=true; fi
+            runtime=false
+            if grep -Eqi 'central jur[ií]dica|3\.0\.0|postgres|ready|health' "$body"; then runtime=true; fi
+            printf '{"url":"%s","path":"%s","status":%s,"location":"%s","contentType":"%s","bodySha256":"%s","sso":%s,"runtimeMarker":%s}\n' \
+              "$BASE_URL" "$path" "$status" "${location//\"/\\\"}" "${content_type//\"/\\\"}" "$body_sha" "$sso" "$runtime" | tee -a probe-evidence.jsonl
           done
-          location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' headers.txt || true)
-          content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' headers.txt || true)
-          body_sha=$(sha256sum body.txt | awk '{print $1}')
-          printf '{"url":"%s","target":"primary-production-alias","status":%s,"location":"%s","contentType":"%s","bodySha256":"%s","marker":%s}\n' \
-            "$PROBE_URL" "$status" "${location//\"/\\\"}" "${content_type//\"/\\\"}" "$body_sha" \
-            "$(grep -q 'central-juridica-public-probe' body.txt && grep -q 'production' body.txt && echo true || echo false)" > evidence.json
-          cat evidence.json
-          test "$status" = "200"
-          grep -q 'central-juridica-public-probe' body.txt
-          grep -q 'production' body.txt
+          cat probe-evidence.jsonl
+          test "$(sed -n '2p' probe-evidence.jsonl | grep -o '"sso":[^,}]*' | cut -d: -f2)" = "false"
       - name: Upload probe evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: central-juridica-public-http-primary-production-alias-probe
+          name: central-juridica-v3-public-runtime-probe
           path: |
-            headers.txt
-            body.txt
-            evidence.json
+            headers*.txt
+            body*.txt
+            probe-evidence.jsonl
