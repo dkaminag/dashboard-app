@@ -1,0 +1,68 @@
+name: Central Juridica Hosted Cutover Diagnostic
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - '.github/workflows/central-juridica-cutover-diagnostic.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: team_6yEx8FtCzh3MwBub7Ka74F3p
+      VERCEL_PROJECT_ID: prj_cZJj1jyYjqmn4W4BtRsbUcGsuMRT
+      CJ_ALIAS: https://central-juridica-v3-public.vercel.app
+    steps:
+      - name: Probe canonical HTTPS endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in / /api/health /api/ready /api/san/openapi.json; do
+            code=$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 20 "$CJ_ALIAS$path" || true)
+            bytes=$(wc -c </tmp/body 2>/dev/null || echo 0)
+            printf 'PROBE path=%s http=%s bytes=%s\n' "$path" "$code" "$bytes"
+          done
+      - name: Check Vercel management credential presence
+        shell: bash
+        run: |
+          if [ -n "${VERCEL_TOKEN:-}" ]; then
+            echo 'VERCEL_TOKEN_PRESENT=true'
+          else
+            echo 'VERCEL_TOKEN_PRESENT=false'
+          fi
+      - name: Inspect target project and environment names
+        if: ${{ env.VERCEL_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_code=$(curl -sS -o /tmp/project.json -w '%{http_code}' \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_TEAM_ID")
+          echo "VERCEL_PROJECT_HTTP=$project_code"
+          test "$project_code" = '200'
+          jq -r '"VERCEL_PROJECT_ID=" + (.id // "") + "\nVERCEL_PROJECT_NAME=" + (.name // "")' /tmp/project.json
+
+          env_code=$(curl -sS -o /tmp/env.json -w '%{http_code}' \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_TEAM_ID")
+          echo "VERCEL_ENV_HTTP=$env_code"
+          test "$env_code" = '200'
+          jq -r '[.envs[]?.key] | unique | sort | .[]' /tmp/env.json | sed 's/^/ENV_KEY=/'
+
+          required='CJ_TIMEZONE CJ_ENV CJ_ADMIN_USER CJ_DATABASE_URL CJ_DOCUMENT_STORAGE_MODE CJ_SECURE_COOKIE CJ_MFA_REQUIRED_ROLES CJ_GOOGLE_ENABLED CJ_AI_ENABLED CJ_DOCUMENT_KEYRING CJ_AUDIT_KEYRING CJ_MFA_KEYRING CJ_BACKUP_KEYRING CJ_IDEMPOTENCY_KEY'
+          keys=$(jq -r '.envs[]?.key' /tmp/env.json | sort -u)
+          missing=0
+          for k in $required; do
+            if printf '%s\n' "$keys" | grep -qx "$k"; then
+              echo "ENV_REQUIRED $k=present"
+            else
+              echo "ENV_REQUIRED $k=missing"
+              missing=$((missing+1))
+            fi
+          done
+          echo "ENV_REQUIRED_MISSING_COUNT=$missing"
