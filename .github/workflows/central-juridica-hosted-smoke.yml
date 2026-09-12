@@ -1,0 +1,29 @@
+name: Central Juridica Hosted Smoke
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-hosted-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  hosted-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public health and readiness
+        env:
+          BASE_URL: https://central-juridica-v3-1-1-cutover-production.up.railway.app
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            HEALTH_CODE=$(curl -sS -o health.json -w '%{http_code}' --max-time 15 "$BASE_URL/api/health" || true)
+            READY_CODE=$(curl -sS -o ready.json -w '%{http_code}' --max-time 15 "$BASE_URL/api/ready" || true)
+            if [ "$HEALTH_CODE" = "200" ] && [ "$READY_CODE" = "200" ]; then break; fi
+            sleep 3
+          done
+          test "$HEALTH_CODE" = "200"
+          test "$READY_CODE" = "200"
+          node -e "const fs=require('fs'); const h=JSON.parse(fs.readFileSync('health.json')); const r=JSON.parse(fs.readFileSync('ready.json')); if(h.version!=='3.1.1') throw new Error('wrong version '+h.version); if(h.ok!==true) throw new Error('health not ok'); if(r.version!=='3.1.1'||r.ok!==true) throw new Error('ready not ok'); console.log(JSON.stringify({healthStatus:200,readyStatus:200,version:h.version,backend:r.backend,ready:r.ok}))"
