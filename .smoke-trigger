@@ -1,1 +1,1 @@
-Central Juridica v3.1.1 isolated hosted smoke trigger — no runtime changes.
+Central Juridica v3.1.1 Railway source snapshot refresh — runtime bundle unchanged; use service startCommand node start.mjs.
