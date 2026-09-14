@@ -1,0 +1,53 @@
+name: Central Juridica Railway Public HTTPS Probe
+
+on:
+  push:
+    branches:
+      - smoke/central-juridica-v3.1.1
+    paths:
+      - ".github/workflows/central-juridica-railway-public-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  anonymous-public-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://central-juridica-v3-1-1-cutover-production.up.railway.app
+    steps:
+      - name: Probe production HTTPS anonymously
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f railway-probe-evidence.jsonl
+          for path in / /api/health /api/ready; do
+            safe=$(echo "$path" | tr '/?' '__')
+            headers="headers${safe}.txt"
+            body="body${safe}.txt"
+            status=$(curl --fail-with-body --max-time 25 --silent --show-error --output "$body" --dump-header "$headers" --write-out '%{http_code}' "${BASE_URL}${path}" || true)
+            content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{sub(/\r$/,"",$0); sub(/^[^:]*:[[:space:]]*/,"",$0); print; exit}' "$headers" || true)
+            body_sha=$(sha256sum "$body" 2>/dev/null | awk '{print $1}' || echo missing)
+            sso=false
+            if grep -Eqi 'vercel\.com/(sso|login)|authentication required|vercel authentication|railway login' "$headers" "$body" 2>/dev/null; then sso=true; fi
+            runtime=false
+            if grep -Eqi 'central-juridica|central jur[ií]dica|3\.1\.1|postgres|ready|health' "$body" 2>/dev/null; then runtime=true; fi
+            printf '{"url":"%s","path":"%s","status":%s,"contentType":"%s","bodySha256":"%s","sso":%s,"runtimeMarker":%s}\n' \
+              "$BASE_URL" "$path" "$status" "${content_type//\"/\\\"}" "$body_sha" "$sso" "$runtime" | tee -a railway-probe-evidence.jsonl
+          done
+          root_status=$(sed -n '1p' railway-probe-evidence.jsonl | grep -o '"status":[0-9]*' | cut -d: -f2)
+          health_status=$(sed -n '2p' railway-probe-evidence.jsonl | grep -o '"status":[0-9]*' | cut -d: -f2)
+          ready_status=$(sed -n '3p' railway-probe-evidence.jsonl | grep -o '"status":[0-9]*' | cut -d: -f2)
+          test "$root_status" = "200"
+          test "$health_status" = "200"
+          test "$ready_status" = "200"
+          ! grep -q '"sso":true' railway-probe-evidence.jsonl
+          grep -q '"runtimeMarker":true' railway-probe-evidence.jsonl
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-v3-1-1-railway-public-probe
+          path: |
+            headers*.txt
+            body*.txt
+            railway-probe-evidence.jsonl
