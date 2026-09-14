@@ -5,6 +5,7 @@ import handler from './runtime/src/server.mjs';
 const pkg = JSON.parse(await fs.readFile(new URL('./runtime/package.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || 3000);
 const host = '0.0.0.0';
+console.log(JSON.stringify({ level: 'info', event: 'production-entrypoint', version: pkg.version }));
 const server = http.createServer((req, res) => handler(req, res));
 server.listen(port, host, () => console.log(JSON.stringify({ level: 'info', event: 'server-listening', host, port, version: pkg.version })));
 async function shutdown(signal) {
