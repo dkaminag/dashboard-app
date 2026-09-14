@@ -1,0 +1,11 @@
+{
+  "name": "central-juridica-smoke-v3-1-1",
+  "version": "3.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check smoke-runner.mjs",
+    "start": "node smoke-runner.mjs"
+  },
+  "engines": { "node": ">=22" }
+}
