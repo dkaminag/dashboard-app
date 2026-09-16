@@ -8,7 +8,9 @@ on:
       - ".github/workflows/central-juridica-hosted-smoke.yml"
   workflow_dispatch:
 
-# Post-redeploy external verification: 2026-09-16
+permissions:
+  contents: read
+
 jobs:
   hosted-smoke:
     runs-on: ubuntu-latest
@@ -27,4 +29,27 @@ jobs:
           done
           test "$HEALTH_CODE" = "200"
           test "$READY_CODE" = "200"
-          node -e "const fs=require('fs'); const h=JSON.parse(fs.readFileSync('health.json')); const r=JSON.parse(fs.readFileSync('ready.json')); if(h.version!=='3.1.1') throw new Error('wrong version '+h.version); if(h.ok!==true) throw new Error('health not ok'); if(r.version!=='3.1.1'||r.ok!==true) throw new Error('ready not ok'); console.log(JSON.stringify({healthStatus:200,readyStatus:200,version:h.version,backend:r.backend,ready:r.ok}))"
+          node <<'NODE'
+          const fs=require('fs');
+          const h=JSON.parse(fs.readFileSync('health.json','utf8'));
+          const r=JSON.parse(fs.readFileSync('ready.json','utf8'));
+          if(h.version!=='3.1.1'||h.ok!==true) throw new Error('health gate failed');
+          if(r.version!=='3.1.1'||r.ok!==true||r.ready!==true||r.backend!=='postgres') throw new Error('readiness gate failed');
+          if(r.checks && Object.prototype.hasOwnProperty.call(r.checks,'database') && r.checks.database!==true) throw new Error('database check failed');
+          const evidence={
+            checkedAt:new Date().toISOString(),
+            baseUrl:'https://central-juridica-v3-1-1-cutover-production.up.railway.app',
+            healthHttp:200,
+            readyHttp:200,
+            health:{ok:h.ok,version:h.version,backend:h.backend||null,productionGuard:h.productionGuard??null,documentsEnabled:h.documentsEnabled??null,integrations:h.integrations||null,requestSecurity:h.requestSecurity||null},
+            readiness:{ok:r.ok,ready:r.ready,version:r.version,backend:r.backend,checks:r.checks||null,decision:r.decision||null}
+          };
+          fs.writeFileSync('hosted-smoke-evidence.json',JSON.stringify(evidence,null,2));
+          console.log(JSON.stringify(evidence));
+          NODE
+      - name: Upload hosted smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-v3-1-1-final-hosted-smoke
+          path: hosted-smoke-evidence.json
