@@ -8,6 +8,7 @@ on:
       - ".github/workflows/central-juridica-hosted-smoke.yml"
   workflow_dispatch:
 
+# Post-redeploy external verification: 2026-09-16
 jobs:
   hosted-smoke:
     runs-on: ubuntu-latest
