@@ -16,40 +16,43 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Unpack canonical runtime
+      - name: Build patched runtime
         working-directory: central-juridica-railway-v3.1.1
-        run: node unpack.mjs
-      - name: Inspect public UI and cache behavior
+        run: npm run build
+      - name: Access verification UI gate
         working-directory: central-juridica-railway-v3.1.1
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
-          root=Path('runtime')
-          print('=== PUBLIC FILE TREE ===')
-          for p in sorted((root/'public').rglob('*')):
-              if p.is_file(): print(f'{p} size={p.stat().st_size}')
-          print('=== PUBLIC TEXT CONTENT ===')
-          for p in sorted((root/'public').rglob('*')):
-              if not p.is_file() or p.suffix.lower() not in {'.html','.js','.mjs','.css','.json','.txt'}: continue
-              try: text=p.read_text('utf-8')
-              except Exception: continue
-              print(f'--- {p} ---')
-              print(text[:60000])
-              if len(text)>60000: print(f'...[TRUNCATED {len(text)-60000} chars]')
-          print('=== STATIC SERVER / CACHE REFERENCES ===')
-          pats=re.compile(r'(?i)(cache-control|etag|serveStatic|public/|index\.html|readFile|createReadStream|content-type|mfaEnrollmentRequired|setupPending|security|seguran|identidade|go-live)')
-          for p in sorted((root/'src').rglob('*')):
-              if not p.is_file() or p.suffix.lower() not in {'.js','.mjs'}: continue
-              try: lines=p.read_text('utf-8').splitlines()
-              except Exception: continue
-              hits=[i for i,l in enumerate(lines) if pats.search(l)]
-              if not hits: continue
-              print(f'--- {p} ---')
-              shown=set()
-              for i in hits:
-                  for j in range(max(0,i-4),min(len(lines),i+5)):
-                      if j not in shown:
-                          print(f'{j+1:05d}: {lines[j]}'); shown.add(j)
-                  print('---')
+          app=Path('runtime/public/app.js').read_text('utf-8')
+          required=[
+            "function showAccessSetup(",
+            "function showSecondFactor(",
+            "r.mfaEnrollmentRequired",
+            "err.data?.mfaRequired",
+            "if(err.handled)return",
+            "Verificação de acesso",
+            "Confirmar acesso"
+          ]
+          missing=[x for x in required if x not in app]
+          if missing: raise SystemExit(f'MISSING_PATCH_MARKERS:{missing}')
+          forbidden=['Ativação de MFA','Código MFA','Segundo fator obrigatório','Código TOTP']
+          leaked=[x for x in forbidden if x in app]
+          if leaked: raise SystemExit(f'VISIBLE_MFA_JARGON:{leaked}')
+          if "showAccessSetup(); const err=new Error('Verificação de acesso pendente.')" not in app:
+              raise SystemExit('ENROLLMENT_403_NOT_HANDLED')
+          if "await beginAccessSetup(password);return;" not in app:
+              raise SystemExit('FIRST_LOGIN_ENROLLMENT_NOT_HANDLED')
+          print({'ok':True,'loop403Fixed':True,'firstAccessHandled':True,'secondFactorHandled':True,'visibleMfaJargon':False})
+          PY
+      - name: Backend MFA preservation gate
+        working-directory: central-juridica-railway-v3.1.1
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('runtime/src/server.mjs').read_text('utf-8')
+          required=["verifyTotp(","/api/users/me/mfa/setup","/api/users/me/mfa/enable","mfaEnrollmentRequired","requiredMfaRoles()"]
+          missing=[x for x in required if x not in s]
+          if missing: raise SystemExit(f'BACKEND_MFA_REGRESSION:{missing}')
+          print({'ok':True,'backendMfaPreserved':True})
           PY
