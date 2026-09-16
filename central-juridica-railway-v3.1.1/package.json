@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node unpack.mjs && node patch-access-ui.mjs && npm install --prefix runtime --omit=dev --no-audit --no-fund && node --check start.mjs && node --check runtime/src/server.mjs && node --check runtime/public/app.js",
+    "build": "node unpack.mjs && node patch-access-ui.mjs && npm install --prefix runtime --omit=dev --no-audit --no-fund && node --check start.mjs && node --check sync-qa-user.mjs && node --check runtime/src/server.mjs && node --check runtime/public/app.js",
     "start": "node start.mjs"
   },
   "engines": { "node": ">=22" }
