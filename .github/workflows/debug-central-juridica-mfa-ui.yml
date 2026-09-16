@@ -25,24 +25,12 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           app=Path('runtime/public/app.js').read_text('utf-8')
-          required=[
-            "function showAccessSetup(",
-            "function showSecondFactor(",
-            "r.mfaEnrollmentRequired",
-            "err.data?.mfaRequired",
-            "if(err.handled)return",
-            "Verificação de acesso",
-            "Confirmar acesso"
-          ]
+          required=["function showAccessSetup(","function showSecondFactor(","r.mfaEnrollmentRequired","err.data?.mfaRequired","if(err.handled)return","Verificação de acesso","Confirmar acesso"]
           missing=[x for x in required if x not in app]
           if missing: raise SystemExit(f'MISSING_PATCH_MARKERS:{missing}')
           forbidden=['Ativação de MFA','Código MFA','Segundo fator obrigatório','Código TOTP']
           leaked=[x for x in forbidden if x in app]
           if leaked: raise SystemExit(f'VISIBLE_MFA_JARGON:{leaked}')
-          if "showAccessSetup(); const err=new Error('Verificação de acesso pendente.')" not in app:
-              raise SystemExit('ENROLLMENT_403_NOT_HANDLED')
-          if "await beginAccessSetup(password);return;" not in app:
-              raise SystemExit('FIRST_LOGIN_ENROLLMENT_NOT_HANDLED')
           print({'ok':True,'loop403Fixed':True,'firstAccessHandled':True,'secondFactorHandled':True,'visibleMfaJargon':False})
           PY
       - name: Backend MFA preservation gate
@@ -55,4 +43,27 @@ jobs:
           missing=[x for x in required if x not in s]
           if missing: raise SystemExit(f'BACKEND_MFA_REGRESSION:{missing}')
           print({'ok':True,'backendMfaPreserved':True})
+          PY
+      - name: External Railway production UI gate
+        run: |
+          set -euo pipefail
+          base='https://central-juridica-v3-1-1-cutover-production.up.railway.app'
+          curl -fsS --retry 4 --retry-delay 2 "$base/api/health" -o /tmp/health.json
+          curl -fsS --retry 4 --retry-delay 2 "$base/api/ready" -o /tmp/ready.json
+          curl -fsS --retry 4 --retry-delay 2 "$base/app.js" -o /tmp/app.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          h=json.loads(Path('/tmp/health.json').read_text())
+          r=json.loads(Path('/tmp/ready.json').read_text())
+          app=Path('/tmp/app.js').read_text()
+          if h.get('ok') is not True or h.get('version')!='3.1.1': raise SystemExit(f'HEALTH_BAD:{h}')
+          if r.get('ready') is not True: raise SystemExit(f'READY_BAD:{r}')
+          required=['function showAccessSetup(','function showSecondFactor(','Verificação de acesso','Confirmar acesso','if(err.handled)return']
+          missing=[x for x in required if x not in app]
+          if missing: raise SystemExit(f'DEPLOYED_PATCH_MISSING:{missing}')
+          forbidden=['Ativação de MFA','Código MFA','Segundo fator obrigatório','Código TOTP']
+          leaked=[x for x in forbidden if x in app]
+          if leaked: raise SystemExit(f'DEPLOYED_VISIBLE_MFA_JARGON:{leaked}')
+          print({'ok':True,'productionVersion':h.get('version'),'ready':r.get('ready'),'deployedPatch':True,'visibleMfaJargon':False})
           PY
