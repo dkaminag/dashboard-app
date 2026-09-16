@@ -21,31 +21,36 @@ jobs:
           BASE_URL: https://central-juridica-v3-1-1-cutover-production.up.railway.app
         run: |
           set -euo pipefail
+          HEALTH_CODE=000
+          READY_CODE=000
           for i in $(seq 1 20); do
             HEALTH_CODE=$(curl -sS -o health.json -w '%{http_code}' --max-time 15 "$BASE_URL/api/health" || true)
             READY_CODE=$(curl -sS -o ready.json -w '%{http_code}' --max-time 15 "$BASE_URL/api/ready" || true)
             if [ "$HEALTH_CODE" = "200" ] && [ "$READY_CODE" = "200" ]; then break; fi
             sleep 3
           done
-          test "$HEALTH_CODE" = "200"
-          test "$READY_CODE" = "200"
+          export HEALTH_CODE READY_CODE
           node <<'NODE'
           const fs=require('fs');
-          const h=JSON.parse(fs.readFileSync('health.json','utf8'));
-          const r=JSON.parse(fs.readFileSync('ready.json','utf8'));
-          if(h.version!=='3.1.1'||h.ok!==true) throw new Error('health gate failed');
-          if(r.version!=='3.1.1'||r.ok!==true||r.ready!==true||r.backend!=='postgres') throw new Error('readiness gate failed');
-          if(r.checks && Object.prototype.hasOwnProperty.call(r.checks,'database') && r.checks.database!==true) throw new Error('database check failed');
+          const safeJson=(path)=>{try{return JSON.parse(fs.readFileSync(path,'utf8'))}catch{return {parseError:true}}};
+          const h=safeJson('health.json');
+          const r=safeJson('ready.json');
           const evidence={
             checkedAt:new Date().toISOString(),
             baseUrl:'https://central-juridica-v3-1-1-cutover-production.up.railway.app',
-            healthHttp:200,
-            readyHttp:200,
-            health:{ok:h.ok,version:h.version,backend:h.backend||null,productionGuard:h.productionGuard??null,documentsEnabled:h.documentsEnabled??null,integrations:h.integrations||null,requestSecurity:h.requestSecurity||null},
-            readiness:{ok:r.ok,ready:r.ready,version:r.version,backend:r.backend,checks:r.checks||null,decision:r.decision||null}
+            healthHttp:Number(process.env.HEALTH_CODE||0),
+            readyHttp:Number(process.env.READY_CODE||0),
+            health:{ok:h.ok??null,version:h.version??null,backend:h.backend??null,productionGuard:h.productionGuard??null,documentsEnabled:h.documentsEnabled??null,integrations:h.integrations??null,requestSecurity:h.requestSecurity??null},
+            readiness:{ok:r.ok??null,ready:Object.prototype.hasOwnProperty.call(r,'ready')?r.ready:null,version:r.version??null,backend:r.backend??null,checks:r.checks??null,decision:r.decision??null,probe:r.probe&&typeof r.probe==='object'?{ok:r.probe.ok??null}:null}
           };
           fs.writeFileSync('hosted-smoke-evidence.json',JSON.stringify(evidence,null,2));
           console.log(JSON.stringify(evidence));
+          if(evidence.healthHttp!==200||evidence.readyHttp!==200) throw new Error('http readiness gate failed');
+          if(h.version!=='3.1.1'||h.ok!==true) throw new Error('health gate failed');
+          if(r.version!=='3.1.1'||r.ok!==true||r.backend!=='postgres') throw new Error('readiness gate failed');
+          if(Object.prototype.hasOwnProperty.call(r,'ready')&&r.ready!==true) throw new Error('explicit ready=false');
+          if(r.probe&&typeof r.probe==='object'&&Object.prototype.hasOwnProperty.call(r.probe,'ok')&&r.probe.ok!==true) throw new Error('database probe failed');
+          if(r.checks&&Object.prototype.hasOwnProperty.call(r.checks,'database')&&r.checks.database!==true) throw new Error('database check failed');
           NODE
       - name: Upload hosted smoke evidence
         if: always()
