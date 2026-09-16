@@ -57,13 +57,13 @@ jobs:
           h=json.loads(Path('/tmp/health.json').read_text())
           r=json.loads(Path('/tmp/ready.json').read_text())
           app=Path('/tmp/app.js').read_text()
-          if h.get('ok') is not True or h.get('version')!='3.1.1': raise SystemExit(f'HEALTH_BAD:{h}')
-          if r.get('ready') is not True: raise SystemExit(f'READY_BAD:{r}')
+          if h.get('ok') is not True or h.get('version')!='3.1.1' or h.get('backend')!='postgres': raise SystemExit(f'HEALTH_BAD:{h}')
+          if r.get('ok') is not True or r.get('backend')!='postgres' or (r.get('probe') or {}).get('ok') is not True: raise SystemExit(f'READY_BAD:{r}')
           required=['function showAccessSetup(','function showSecondFactor(','Verificação de acesso','Confirmar acesso','if(err.handled)return']
           missing=[x for x in required if x not in app]
           if missing: raise SystemExit(f'DEPLOYED_PATCH_MISSING:{missing}')
           forbidden=['Ativação de MFA','Código MFA','Segundo fator obrigatório','Código TOTP']
           leaked=[x for x in forbidden if x in app]
           if leaked: raise SystemExit(f'DEPLOYED_VISIBLE_MFA_JARGON:{leaked}')
-          print({'ok':True,'productionVersion':h.get('version'),'ready':r.get('ready'),'deployedPatch':True,'visibleMfaJargon':False})
+          print({'ok':True,'productionVersion':h.get('version'),'ready':True,'deployedPatch':True,'visibleMfaJargon':False})
           PY
