@@ -1,0 +1,57 @@
+name: Central Juridica Public HTTPS Probe
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-public-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  public-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe canonical public runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://central-juridica-v3-public.vercel.app"
+          rm -rf probe && mkdir probe
+          ok=1
+          for item in root:/ health:/api/health ready:/api/ready; do
+            name="${item%%:*}"
+            path="${item#*:}"
+            status=$(curl --silent --show-error --max-time 20 --connect-timeout 10               --output "probe/${name}.body" --dump-header "probe/${name}.headers"               --write-out "%{http_code}" "${BASE}${path}" || echo "000")
+            printf "%s=%s\n" "$name" "$status" | tee -a probe/status.txt
+            printf -- "--- %s headers ---\n" "$name"
+            sed -n '1,20p' "probe/${name}.headers" | sed -E 's/(set-cookie:).*/\1 [REDACTED]/I'
+            printf -- "--- %s body ---\n" "$name"
+            head -c 1500 "probe/${name}.body" || true
+            printf "\n"
+            if [[ "$status" != "200" ]]; then ok=0; fi
+          done
+          if grep -Eiq 'vercel.*(authentication|login)|sso' probe/root.body probe/health.body probe/ready.body; then
+            echo "VERCEL_AUTH_INTERCEPT=true" | tee -a probe/status.txt
+            ok=0
+          else
+            echo "VERCEL_AUTH_INTERCEPT=false" | tee -a probe/status.txt
+          fi
+          health_version=$(python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open('probe/health.body'))
+              print(d.get('version',''))
+          except Exception:
+              print('')
+          PY
+          )
+          printf "health_version=%s\n" "$health_version" | tee -a probe/status.txt
+          [[ "$ok" == "1" ]]
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-public-probe
+          path: probe/
