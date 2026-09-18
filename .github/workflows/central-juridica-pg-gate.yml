@@ -79,6 +79,8 @@ jobs:
         run: set -o pipefail; npm run clients-v2-9-gate | tee clients-v2-9-evidence.json
       - name: Run v3.0 dedicated document gate
         run: set -o pipefail; npm run documents-v3-gate | tee documents-v3-evidence.json
+      - name: Run v3.2 Central Sheet bootstrap gate
+        run: set -o pipefail; npm run central-sheet-v3-2-gate | tee central-sheet-v3-2-evidence.json
       - name: Run v3.0 final production readiness gate
         run: set -o pipefail; node scripts/production-readiness-v3-gate.mjs | tee production-readiness-v3-evidence.json
       - name: Upload evidence
@@ -104,6 +106,7 @@ jobs:
             central-juridica-gate/external-evidence-v2-8-evidence.json
             central-juridica-gate/clients-v2-9-evidence.json
             central-juridica-gate/documents-v3-evidence.json
+            central-juridica-gate/central-sheet-v3-2-evidence.json
             central-juridica-gate/production-readiness-v3-evidence.json
       - name: Upload reproducible dependency set
         uses: actions/upload-artifact@v4
