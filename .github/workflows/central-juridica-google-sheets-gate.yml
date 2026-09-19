@@ -1,0 +1,37 @@
+name: Central Juridica Google Sheets Gate
+
+on:
+  push:
+    branches:
+      - feature/central-juridica-google-sheets-20260919
+    paths:
+      - "central-juridica-source-v3.1.1/**"
+      - ".github/workflows/central-juridica-google-sheets-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sheets-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: central-juridica-source-v3.1.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install runtime dependency
+        run: npm install --no-audit --no-fund
+      - name: Static checks
+        run: |
+          node --check src/google-sheets.mjs
+          node --check src/server.mjs
+          node --check public/app.js
+      - name: Google Sheets security and wiring tests
+        run: node --test tests/google-sheets.test.mjs tests/google-sheets-wiring.test.mjs
+      - name: Fail if Google Sheets write API appears
+        run: |
+          ! grep -R -n -E "spreadsheets/.*/values/(append|update)|values:(append|update)|batchUpdate" src/google-sheets.mjs
