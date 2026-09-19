@@ -1,0 +1,53 @@
+name: Central Juridica v3.1.1 Source Expansion
+
+on:
+  push:
+    branches:
+      - feature/central-juridica-google-sheets-20260919
+    paths:
+      - ".github/workflows/central-juridica-expand-v311.yml"
+      - "central-juridica-railway-v3.1.1/runtime.bundle.part*.b64"
+      - "central-juridica-railway-v3.1.1/unpack.mjs"
+
+permissions:
+  contents: write
+
+jobs:
+  expand-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unpack sealed runtime
+        working-directory: central-juridica-railway-v3.1.1
+        run: node unpack.mjs
+      - name: Export non-secret source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central-juridica-source-v3.1.1
+          mkdir -p central-juridica-source-v3.1.1
+          cp central-juridica-railway-v3.1.1/runtime/package.json central-juridica-source-v3.1.1/package.json
+          cp -R central-juridica-railway-v3.1.1/runtime/src central-juridica-source-v3.1.1/src
+          cp -R central-juridica-railway-v3.1.1/runtime/public central-juridica-source-v3.1.1/public
+          if [ -d central-juridica-railway-v3.1.1/runtime/contracts ]; then
+            cp -R central-juridica-railway-v3.1.1/runtime/contracts central-juridica-source-v3.1.1/contracts
+          fi
+          if grep -R -n -E '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@)' central-juridica-source-v3.1.1; then
+            echo "Potential secret-like material found; refusing to commit expanded source."
+            exit 1
+          fi
+      - name: Commit expanded source for audited patching
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central-juridica-source-v3.1.1
+          git diff --cached --quiet && exit 0
+          git commit -m "Expand Central Juridica v3.1.1 source for audited Sheets integration"
+          git push origin HEAD:${GITHUB_REF_NAME}
