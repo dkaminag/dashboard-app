@@ -1,0 +1,53 @@
+name: CJ v3.2 Preview Wrapper Gate
+
+on:
+  push:
+    branches:
+      - preview/central-juridica-v3.2.0-intake
+    paths:
+      - 'central-juridica-railway-v3.1.1/**'
+      - '.github/workflows/cj-v32-preview-wrapper.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrapper-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: central-juridica-railway-v3.1.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: central-juridica-railway-v3.1.1/package.json
+
+      - name: Build certified base + v3.2 overlay
+        run: npm run build
+
+      - name: Verify reconstructed candidate
+        run: |
+          node -e "const p=require('./runtime/package.json'); if(p.version!=='3.2.0-preview') process.exit(1); console.log(JSON.stringify({version:p.version}))"
+          test -f runtime/src/intake-auth.mjs
+          test -f runtime/src/leads.mjs
+          test -f runtime/src/postgres-leads.mjs
+          test -f runtime/contracts/central-juridica-intake-v1.openapi.json
+          node --check runtime/src/server.mjs
+          node --check runtime/src/leads.mjs
+          node --check runtime/src/postgres-leads.mjs
+          node --check runtime/src/intake-auth.mjs
+
+      - name: Verify intake contract
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const c=JSON.parse(fs.readFileSync('./runtime/contracts/central-juridica-intake-v1.openapi.json','utf8')); if(!c.paths?.['/api/intake/leads']?.post) process.exit(1); console.log(JSON.stringify({contract:c.info?.version,path:'/api/intake/leads'}));"
+
+      - name: Gate summary
+        run: |
+          echo "CJ_V32_WRAPPER_GATE=PASS"
+          echo "PRODUCTION_MUTATED=FALSE"
