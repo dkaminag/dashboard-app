@@ -28,6 +28,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: central-juridica-railway-v3.1.1/package.json
 
+      - name: Verify overlay transport before build
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const names = fs.readdirSync('.').filter(n => /^overlay\.v3\.2\.0\.part\d+\.b64$/.test(n)).sort();
+          if (names.length !== 9) throw new Error('OVERLAY_PART_COUNT:' + names.length);
+          const encoded = names.map(n => fs.readFileSync(n,'utf8')).join('').replace(/\s+/g,'');
+          if (encoded.length !== 41924) throw new Error('OVERLAY_TEXT_LENGTH:' + encoded.length);
+          const sha = crypto.createHash('sha256').update(encoded,'utf8').digest('hex');
+          if (sha !== 'ffa471575efe3a63e410241611e70efa9e118d100abdf124c40912a5b404ca75') throw new Error('OVERLAY_TEXT_SHA:' + sha);
+          console.log(JSON.stringify({parts:names.length,length:encoded.length,textSha256:sha}));
+          NODE
+
       - name: Build certified base + v3.2 overlay
         run: npm run build
 
