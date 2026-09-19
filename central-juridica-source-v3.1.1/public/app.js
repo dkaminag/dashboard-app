@@ -173,14 +173,22 @@ async function renderIntegrations(){
   const status=await api('/api/integrations/status');
   const role=state.session?.role||'';
   const canOperate=role==='admin'||role==='lawyer';
+  const centralSheet=status.google.centralSheet||{};
+  const centralTabs=Array.isArray(centralSheet.allowedTabs)?centralSheet.allowedTabs:[];
   content.innerHTML=`
     <div class="grid two-col">
       <div class="panel">
         <h3>Google Workspace</h3>
         <p><span class="badge ${status.google.configured?'low':'mid'}">${status.google.configured?'Configurado':'Não configurado'}</span> <span class="badge">Somente leitura</span></p>
-        <p class="muted">Gmail: apenas metadados. Calendar: eventos. Drive: metadados de arquivos. O snapshot não é persistido automaticamente.</p>
-        ${canOperate?`<div class="form-grid"><label class="wide">Filtro opcional do Gmail<input id="gmailQuery" placeholder="ex.: newer_than:7d"></label></div><button id="syncGoogle" class="primary" ${status.google.configured?'':'disabled'}>Ler metadados</button> <button id="dailyGoogle" class="secondary" ${status.google.configured?'':'disabled'}>Resumo do dia + Google</button>`:'<p class="muted">Seu perfil possui acesso de leitura ao status, sem permissão de sincronização.</p>'}
+        <p class="muted">Gmail: apenas metadados. Calendar: eventos. Drive: metadados de arquivos. Sheets: leitura ao vivo da planilha Central Jurídica. Nenhum snapshot é persistido automaticamente.</p>
+        ${canOperate?`<div class="form-grid"><label class="wide">Filtro opcional do Gmail<input id="gmailQuery" placeholder="ex.: newer_than:7d"></label></div><button id="syncGoogle" class="primary" ${status.google.configured?'':'disabled'}>Ler metadados</button> <button id="dailyGoogle" class="secondary" ${status.google.configured?'':'disabled'}>Resumo do dia + Google</button>
+        <hr>
+        <h4>Planilha Central Jurídica</h4>
+        <p class="muted">Fonte ao vivo e somente leitura. A planilha não é alterada pelo aplicativo.</p>
+        <div class="form-grid"><label>Aba<select id="centralSheetTab">${centralTabs.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select></label><label>Linhas<select id="centralSheetLimit"><option>25</option><option selected>50</option><option>100</option><option>250</option></select></label></div>
+        <button id="testCentralSheet" class="secondary" ${centralSheet.configured?'':'disabled'}>Testar conexão</button> <button id="readCentralSheet" class="primary" ${centralSheet.configured?'':'disabled'}>Ler planilha</button>`:'<p class="muted">Seu perfil possui acesso de leitura ao status, sem permissão de sincronização.</p>'}
         <div id="googleOutput" class="integration-output"></div>
+        <div id="centralSheetOutput" class="integration-output"></div>
       </div>
       <div class="panel">
         <h3>IA jurídica</h3>
@@ -200,6 +208,35 @@ async function renderIntegrations(){
       $('#googleOutput').innerHTML=`<h4>Snapshot somente leitura</h4><p class="muted">${new Date(x.generatedAt).toLocaleString('pt-BR')}</p><div class="mini-grid"><div><strong>Gmail</strong><span>${x.gmail.length}</span></div><div><strong>Agenda</strong><span>${x.calendar.length}</span></div><div><strong>Drive</strong><span>${x.drive.length}</span></div></div>${x.gmail.slice(0,5).map(m=>`<div class="list-item"><strong>${esc(m.subject)}</strong><small>${esc(m.from)} · ${esc(m.date)}</small></div>`).join('')}`;
     }catch(err){ $('#googleOutput').innerHTML=`<p class="error">${esc(err.message)}</p>`; }
     finally{sync.disabled=!status.google.configured;}
+  };
+
+  const testCentralSheet=$('#testCentralSheet');
+  if(testCentralSheet) testCentralSheet.onclick=async()=>{
+    testCentralSheet.disabled=true; $('#centralSheetOutput').innerHTML='<p class="muted">Testando acesso à planilha…</p>';
+    try{
+      const r=await api('/api/integrations/google/central-sheet/status');
+      const x=r.centralSheet;
+      $('#centralSheetOutput').innerHTML=`<h4>Conexão ativa</h4><p><span class="badge low">Somente leitura</span> <strong>${esc(x.title||'Central Jurídica')}</strong></p><p class="muted">${x.allowedTabs.length} abas autorizadas · ${esc(x.locale||'')} · ${esc(x.timeZone||'')}</p>`;
+    }catch(err){ $('#centralSheetOutput').innerHTML=`<p class="error">${esc(err.message)}</p>`; }
+    finally{testCentralSheet.disabled=!centralSheet.configured;}
+  };
+
+  const readCentralSheet=$('#readCentralSheet');
+  if(readCentralSheet) readCentralSheet.onclick=async()=>{
+    const tab=$('#centralSheetTab')?.value;
+    const limit=Number($('#centralSheetLimit')?.value||50);
+    if(!tab)return toast('Selecione uma aba da planilha.');
+    readCentralSheet.disabled=true; $('#centralSheetOutput').innerHTML='<p class="muted">Lendo planilha ao vivo…</p>';
+    try{
+      const r=await api('/api/integrations/google/central-sheet/read',{method:'POST',body:JSON.stringify({tab,limit})});
+      const x=r.result.tabs[0];
+      const preview=(x.records||[]).slice(0,20).map(row=>{
+        const fields=Object.entries(row).filter(([k,v])=>k!=='_row'&&String(v??'').trim()!=='').slice(0,12);
+        return `<div class="list-item"><strong>Linha ${row._row||'—'}</strong><small>${fields.map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' · ')}</small></div>`;
+      }).join('');
+      $('#centralSheetOutput').innerHTML=`<h4>${esc(x.tab)}</h4><p class="muted">${x.rowCount} linhas lidas · mostrando até 20 · somente leitura</p><div class="list">${preview||'<div class="empty">Nenhuma linha com dados.</div>'}</div>`;
+    }catch(err){ $('#centralSheetOutput').innerHTML=`<p class="error">${esc(err.message)}</p>`; }
+    finally{readCentralSheet.disabled=!centralSheet.configured;}
   };
 
   const dailyGoogle=$('#dailyGoogle');
