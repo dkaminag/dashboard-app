@@ -10,6 +10,7 @@ import { safeStorageName, validateDocumentInput } from './documents.mjs';
 import { decryptBuffer, encryptBuffer, encryptedBufferKeyId, loadDocumentKeyring } from './crypto-storage.mjs';
 import { GoogleWorkspaceClient } from './google-workspace.mjs';
 import { GoogleTokenProvider } from './google-auth.mjs';
+import { CentralJuridicaSheetClient, GOOGLE_SHEETS_READONLY_SCOPE } from './google-sheets.mjs';
 import { OpenAIResponsesClient } from './openai-client.mjs';
 import { buildLegalDraftRequest, publicDraft, validateAiTask } from './ai-legal.mjs';
 import { buildDailyBrief } from './triage.mjs';
@@ -76,6 +77,8 @@ const aiEnabled = process.env.CJ_AI_ENABLED === 'true';
 const googleTokenProvider = new GoogleTokenProvider();
 const googleConfigured = googleEnabled && googleTokenProvider.configured;
 const googleAuthMode = googleTokenProvider.mode;
+const centralSheetClient = new CentralJuridicaSheetClient({ tokenProvider: googleTokenProvider });
+const centralSheetConfigured = googleConfigured && centralSheetClient.configured;
 const openaiConfigured = aiEnabled && Boolean(String(process.env.CJ_OPENAI_API_KEY || '').trim() && String(process.env.CJ_OPENAI_MODEL || '').trim());
 if (process.env.CJ_ENV === 'production' && googleEnabled && !googleTokenProvider.refreshConfigured) throw new Error('Google habilitado em production exige client ID, client secret e refresh token; access token isolado não é aceito.');
 
@@ -211,7 +214,7 @@ async function handleApi(req, res, url, requestId) {
   if (!sameOriginAllowed(req)) return json(res, 403, { error: 'Origem não permitida.' }, requestId);
 
   if (req.method === 'GET' && url.pathname === '/api/health') {
-    return json(res, 200, { ok: true, service: 'central-juridica', version: appVersion, backend, documentEncryption: Boolean(documentKeyring), documentStorageMode, documentsEnabled, productionGuard: process.env.CJ_ENV === 'production', integrations: { googleConfigured, openaiConfigured, googleEnabled, aiEnabled, sanEnabled: san.enabled }, san: { mode: 'read-only', contractVersion: sanOpenApi.info.version, baseUrlBound: Boolean(san.baseUrl) }, requestSecurity: { rateLimitBackend: rateLimiter.backend, sessionBackend: backend === 'postgres' ? 'postgres-table' : 'json-state', userBackend: backend === 'postgres' ? 'postgres-table' : 'json-state', auditBackend: store.supportsDedicatedAudit ? 'postgres-append-only' : 'json-state', idempotencyBackend: store.supportsDedicatedIdempotency ? 'postgres-table-hmac' : 'json-state', behindProxy, trustedProxyRules: trustedProxies.length } }, requestId);
+    return json(res, 200, { ok: true, service: 'central-juridica', version: appVersion, backend, documentEncryption: Boolean(documentKeyring), documentStorageMode, documentsEnabled, productionGuard: process.env.CJ_ENV === 'production', integrations: { googleConfigured, centralSheetConfigured, openaiConfigured, googleEnabled, aiEnabled, sanEnabled: san.enabled }, san: { mode: 'read-only', contractVersion: sanOpenApi.info.version, baseUrlBound: Boolean(san.baseUrl) }, requestSecurity: { rateLimitBackend: rateLimiter.backend, sessionBackend: backend === 'postgres' ? 'postgres-table' : 'json-state', userBackend: backend === 'postgres' ? 'postgres-table' : 'json-state', auditBackend: store.supportsDedicatedAudit ? 'postgres-append-only' : 'json-state', idempotencyBackend: store.supportsDedicatedIdempotency ? 'postgres-table-hmac' : 'json-state', behindProxy, trustedProxyRules: trustedProxies.length } }, requestId);
   }
 
   if (req.method === 'GET' && url.pathname === '/api/ready') {
@@ -1204,8 +1207,16 @@ async function handleApi(req, res, url, requestId) {
         enabled: googleEnabled,
         mode: 'read-only',
         authMode: googleAuthMode,
-        features: ['gmail-metadata', 'calendar-events', 'drive-metadata'],
-        persistence: 'snapshot-not-persisted'
+        features: ['gmail-metadata', 'calendar-events', 'drive-metadata', 'sheets-readonly'],
+        persistence: 'snapshot-not-persisted',
+        centralSheet: {
+          configured: centralSheetConfigured,
+          source: 'Central Jurídica - Brito & Peovezan',
+          allowedTabs: centralSheetClient.allowedTabs,
+          mode: 'live-read-only',
+          persistence: 'not-persisted',
+          requiredScope: GOOGLE_SHEETS_READONLY_SCOPE
+        }
       },
       openai: {
         configured: openaiConfigured,
@@ -1215,6 +1226,42 @@ async function handleApi(req, res, url, requestId) {
         outputPolicy: 'human-review-required'
       }
     }, requestId);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/integrations/google/central-sheet/status') {
+    requirePermission(session, 'integrations:read');
+    if (!centralSheetConfigured) return json(res, 503, { error: 'Planilha Central Jurídica não configurada no servidor.', code: 'CENTRAL_SHEET_NOT_CONFIGURED' }, requestId);
+    const metadata = await centralSheetClient.metadata();
+    return json(res, 200, {
+      centralSheet: {
+        configured: true,
+        connected: true,
+        title: metadata.title,
+        locale: metadata.locale,
+        timeZone: metadata.timeZone,
+        sheets: metadata.sheets,
+        allowedTabs: metadata.allowedTabs,
+        readOnly: true,
+        persistence: 'not-persisted',
+        requiredScope: GOOGLE_SHEETS_READONLY_SCOPE
+      }
+    }, requestId);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/integrations/google/central-sheet/read') {
+    requirePermission(session, 'integrations:sync');
+    if (!centralSheetConfigured) return json(res, 503, { error: 'Planilha Central Jurídica não configurada no servidor.', code: 'CENTRAL_SHEET_NOT_CONFIGURED' }, requestId);
+    const body = await readBody(req, 32 * 1024);
+    const tabs = body.tabs ?? body.tab ?? ['Processos'];
+    const result = await centralSheetClient.readTabs({ tabs, limit: body.limit });
+    await store.mutate(db => addAudit(db, session, requestId, 'GOOGLE_CENTRAL_SHEET_READ', 'integration', 'central-sheet', {
+      tabs: result.tabs.map(item => item.tab),
+      rowCounts: Object.fromEntries(result.tabs.map(item => [item.tab, item.rowCount])),
+      readOnly: true,
+      persistedSnapshot: false,
+      spreadsheetIdHashPrefix: crypto.createHash('sha256').update(centralSheetClient.spreadsheetId).digest('hex').slice(0, 12)
+    }));
+    return json(res, 200, { result }, requestId);
   }
 
   if (req.method === 'POST' && url.pathname === '/api/integrations/google/snapshot') {
