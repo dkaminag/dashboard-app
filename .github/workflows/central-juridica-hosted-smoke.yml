@@ -58,3 +58,5 @@ jobs:
         with:
           name: central-juridica-v3-1-1-final-hosted-smoke
           path: hosted-smoke-evidence.json
+
+# final-delivery-verification: 2026-09-19
