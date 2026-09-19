@@ -1,0 +1,37 @@
+name: Central Juridica Google Environment Probe
+
+on:
+  push:
+    branches:
+      - feature/central-juridica-google-sheets-20260919
+    paths:
+      - ".github/workflows/central-juridica-google-env-probe.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: team_6yEx8FtCzh3MwBub7Ka74F3p
+      VERCEL_PROJECT_ID: prj_cZJj1jyYjqmn4W4BtRsbUcGsuMRT
+    steps:
+      - name: Check management credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${VERCEL_TOKEN:-}" ]; then echo "VERCEL_TOKEN_PRESENT=true"; else echo "VERCEL_TOKEN_PRESENT=false"; exit 2; fi
+      - name: Read environment key names only
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" -o /tmp/env.json
+          keys=$(jq -r '.envs[]?.key' /tmp/env.json | sort -u)
+          for k in CJ_GOOGLE_ENABLED CJ_GOOGLE_CLIENT_ID CJ_GOOGLE_CLIENT_SECRET CJ_GOOGLE_REFRESH_TOKEN CJ_GOOGLE_ACCESS_TOKEN CJ_CENTRAL_SHEET_ID; do
+            if printf '%s\n' "$keys" | grep -qx "$k"; then
+              echo "$k=present"
+            else
+              echo "$k=missing"
+            fi
+          done
+          rm -f /tmp/env.json
