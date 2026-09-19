@@ -60,3 +60,5 @@ jobs:
           path: hosted-smoke-evidence.json
 
 # final-delivery-verification: 2026-09-19
+
+# final-post-dr-verification: 2026-09-19
