@@ -1,0 +1,49 @@
+name: Central Juridica Google OAuth Environment Preflight
+
+on:
+  push:
+    branches:
+      - feature/central-juridica-google-sheets-20260919
+    paths:
+      - ".github/workflows/central-juridica-google-env-preflight.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  google-env-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: team_6yEx8FtCzh3MwBub7Ka74F3p
+      VERCEL_PROJECT_ID: prj_cZJj1jyYjqmn4W4BtRsbUcGsuMRT
+    steps:
+      - name: Inspect Vercel environment key names only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VERCEL_TOKEN:-}"
+          code=$(curl -sS -o /tmp/env.json -w '%{http_code}'             -H "Authorization: Bearer $VERCEL_TOKEN"             "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_TEAM_ID")
+          echo "VERCEL_ENV_HTTP=$code"
+          test "$code" = "200"
+          jq -r '
+            .envs[]? |
+            select(.key=="CJ_GOOGLE_ENABLED" or
+                   .key=="CJ_GOOGLE_CLIENT_ID" or
+                   .key=="CJ_GOOGLE_CLIENT_SECRET" or
+                   .key=="CJ_GOOGLE_REFRESH_TOKEN" or
+                   .key=="CJ_GOOGLE_ACCESS_TOKEN" or
+                   .key=="CJ_CENTRAL_SHEET_ID") |
+            "GOOGLE_ENV_KEY=" + .key + " targets=" + ((.target // [])|join(","))
+          ' /tmp/env.json | sort
+          keys=$(jq -r '.envs[]?.key' /tmp/env.json | sort -u)
+          for k in CJ_GOOGLE_ENABLED CJ_GOOGLE_CLIENT_ID CJ_GOOGLE_CLIENT_SECRET CJ_GOOGLE_REFRESH_TOKEN CJ_CENTRAL_SHEET_ID; do
+            if printf '%s
+' "$keys" | grep -qx "$k"; then
+              echo "$k=present"
+            else
+              echo "$k=missing"
+            fi
+          done
+          rm -f /tmp/env.json
