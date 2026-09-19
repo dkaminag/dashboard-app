@@ -1,0 +1,40 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Central Jurídica SAN Control Plane API",
+    "version": "1.0.0",
+    "description": "Contrato estável e read-only entre SAN Control Plane e Central Jurídica. Nenhuma ação jurídica, financeira, documental ou de autenticação é autorizada por este contrato."
+  },
+  "servers": [{"url": "/", "description": "Base URL vinculada externamente por SAN_CENTRAL_JURIDICA_BASE_URL / CJ_PUBLIC_BASE_URL"}],
+  "components": {
+    "securitySchemes": {
+      "SanBearer": {"type": "http", "scheme": "bearer", "bearerFormat": "opaque-32+-char-secret"}
+    }
+  },
+  "paths": {
+    "/api/san/openapi.json": {
+      "get": {"operationId": "getSanOpenApi", "summary": "Obtém o contrato SAN versionado", "responses": {"200": {"description": "OpenAPI JSON"}}}
+    },
+    "/api/san/status": {
+      "get": {
+        "operationId": "getSanStatus", "summary": "Obtém status operacional minimizado", "security": [{"SanBearer": []}],
+        "responses": {"200": {"description": "Status e capacidades sem conteúdo jurídico"}, "401": {"description": "Token inválido"}, "404": {"description": "Integração SAN desabilitada"}}
+      }
+    },
+    "/api/san/gates": {
+      "get": {
+        "operationId": "getSanGates", "summary": "Obtém gates técnicos minimizados", "security": [{"SanBearer": []}],
+        "responses": {"200": {"description": "Resumo dos gates"}, "401": {"description": "Token inválido"}, "404": {"description": "Integração SAN desabilitada"}}
+      }
+    }
+  },
+  "x-san-policy": {
+    "mode": "read-only",
+    "allowedActions": ["status:read", "gates:read"],
+    "consequentialActions": "forbidden",
+    "humanApprovalRequiredForFutureWrites": true,
+    "noLegalConclusionAuthority": true,
+    "noDocumentBodyAccess": true,
+    "noGoogleContentAccess": true
+  }
+}

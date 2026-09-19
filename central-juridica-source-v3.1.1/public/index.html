@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Central Jurídica — Brito & Peovezan</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <section id="loginView" class="login-shell">
+    <form id="loginForm" class="login-card">
+      <div class="brand-mark">BP</div>
+      <p class="eyebrow">Brito & Peovezan</p>
+      <h1>Central Jurídica</h1>
+      <p class="muted">Ambiente interno para gestão de processos, prazos e auditoria.</p>
+      <label>Usuário<input name="username" autocomplete="username" required></label>
+      <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Entrar</button>
+      <p id="loginError" class="error"></p>
+    </form>
+  </section>
+
+  <div id="appView" class="app hidden">
+    <aside class="sidebar">
+      <div>
+        <div class="brand"><span>BP</span><div><strong>Central Jurídica</strong><small>Brito & Peovezan</small></div></div>
+        <nav id="nav">
+          <button data-view="dashboard" class="active">Visão geral</button>
+          <button data-view="processes">Processos</button>
+          <button data-view="agreements">Acordos</button>
+          <button data-view="executions">Execuções</button>
+          <button data-view="clients">Clientes</button>
+          <button data-view="tasks">Tarefas & Prazos</button>
+          <button data-view="documents">Documentos</button>
+          <button data-view="evidence">Central de Evidências</button>
+          <button data-view="preventive">Trabalhista Preventivo</button>
+          <button data-view="finance">Financeiro</button>
+          <button data-view="reports">Relatórios</button>
+          <button data-view="integrations">Integrações & IA</button>
+          <button data-view="audit">Auditoria</button>
+          <button data-view="users" class="hidden">Usuários & Perfis</button>
+        </nav>
+      </div>
+      <button id="logoutBtn" class="ghost">Sair</button>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow">CENTRAL JURÍDICA</p><h2 id="pageTitle">Visão geral</h2></div>
+        <div class="status-pill"><span></span> <span id="userRole">ambiente local</span></div>
+      </header>
+      <section id="content" class="content"></section>
+    </main>
+  </div>
+
+  <dialog id="modal"><form method="dialog" id="modalForm"><div id="modalBody"></div></form></dialog>
+  <script src="/app.js"></script>
+</body>
+</html>
