@@ -3,8 +3,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BASE = '498e8348b65eb5c1a1763596b4415328877e255c';
-const SOURCE = '46efd3ad27f1a8b3346242b6b4e6455ffb51ed70';
+const BASE = '4fd9b5a0fa0951470f1d8ed4c731fb89de522169';
+const SOURCE = '51f328833a23f9cb1b5eed1d9c1449f53ab3b35f';
 const EXPECTED = [
   'dashboard-backend/Dockerfile.central-juridica-v32-preview',
 ].sort();
@@ -66,7 +66,7 @@ const dockerfile = fs.readFileSync(
   path.resolve('dashboard-backend/Dockerfile.central-juridica-v32-preview'),
   'utf8',
 );
-if (!dockerfile.includes('498e8348b65eb5c1a1763596b4415328877e255c')) {
+if (!dockerfile.includes('4fd9b5a0fa0951470f1d8ed4c731fb89de522169')) {
   throw new Error('IMMUTABLE_DOCKER_SOURCE_PIN_MISSING');
 }
 if (/tar\.gz\/(main|master|HEAD)(?:['"\s]|$)/.test(dockerfile)) {
