@@ -1,0 +1,42 @@
+name: Central Juridica v3.2 Audit Keyring Diagnostic
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-v32-audit-keyring-20260922
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Reconstruct v3.2 runtime
+        working-directory: central-juridica-railway-v3.2.0
+        run: npm run build
+
+      - name: Print keyring-relevant source only
+        working-directory: central-juridica-railway-v3.2.0
+        run: |
+          echo '=== store-factory.mjs ==='
+          sed -n '1,240p' runtime/src/store-factory.mjs
+          echo '=== audit-integrity keyring API ==='
+          grep -n -E 'loadAuditKeyring|createAudit|keyring|activeKey|development-v1' runtime/src/audit-integrity.mjs | head -n 120 || true
+          echo '=== postgres-store createStore usage ==='
+          grep -n -E 'audit|keyring|createStore|PostgresStateStore' runtime/src/postgres-store.mjs | head -n 160 || true
+
+      - name: Summary
+        run: echo CJ_V32_AUDIT_KEYRING_DIAGNOSTIC=PASS
