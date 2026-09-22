@@ -1,46 +1,96 @@
-# Central Jurídica v3.2 — current release certification — 2026-09-22
+# Central Jurídica v3.2 — production DR gate — 2026-09-22
 
 ## Scope
 
-This gate certifies the current non-canonical v3.2 Railway candidate source lineage without changing the canonical domain or the 3.1.1 rollback baseline.
+This gate hardens the non-canonical v3.2 Railway candidate so an encrypted DR drill cannot be accepted while the runtime is using the development audit-key fallback.
 
-- certified runtime/verifier base: `498e8348b65eb5c1a1763596b4415328877e255c`
-- current release source snapshot: `5f3c2045c6e082a69e0b26fc2f64168264f96e52`
-- exact delta: three commits / three files
-- current Docker package pin: `534b2a2e5c87125f9c77b27a915463d4daeaa229`
-- package path: `central-juridica-railway-v3.2.0`
+Current release baseline:
 
-Expected release-only delta:
+- certified main before this hardening delta: `15f88f533c6c386f274da79b435418f64a27fc3e`;
+- application hardening commit: `133f5bc47aacd03b4e2233e54c9d2e8434f72554`;
+- exact application delta: one file, `central-juridica-railway-v3.2.0/final-drill.mjs`;
+- current Docker package pin remains `534b2a2e5c87125f9c77b27a915463d4daeaa229`;
+- package path remains `central-juridica-railway-v3.2.0`.
 
-- `dashboard-backend/Dockerfile.central-juridica-v32-preview`
-- `dashboard-backend/CJ_V32_SOURCE_REFRESH_2026-09-22.txt`
-- `central-juridica-v32-verifier/smoke.mjs`
+The Dockerfile is intentionally not repinned by this PR. This is a source-level guard first; live deployment remains blocked on authoritative production audit-key recovery.
 
-The refresh marker has no runtime behavior. The Dockerfile must keep an immutable commit pin and must not regress to the historical v3.1.1 wrapper path.
+## Security finding
 
-## Deterministic source/build gate
+A bounded source diagnostic proved that `PostgresStateStore` always initializes its audit keyring through `loadAuditKeyring()`.
 
-The certification workflow must:
+The keyring parser:
 
-1. prove the exact three-commit/three-file lineage above;
-2. prove the certification branch does not alter the candidate package, Dockerfile or verifier relative to the source snapshot;
-3. retain the nine-part overlay transport hash;
-4. rebuild the reconstructed `3.2.0-preview` runtime;
-5. validate intake modules, OpenAPI contract and fail-closed DR invariants;
-6. validate the isolated verifier package;
-7. build the Railway Docker candidate from the immutable source pin;
-8. avoid Railway secrets and production database mutation during source/build certification.
+1. uses `CJ_AUDIT_KEYRING` when present;
+2. otherwise accepts the legacy `CJ_AUDIT_KEY`;
+3. fails closed when `CJ_ENV=production` and neither is available;
+4. otherwise creates a deterministic development key with key id `development-v1`.
 
-## Live runtime evidence
+Therefore earlier green candidate DR evidence is supporting runtime evidence only. It is not sufficient production DR acceptance because the candidate had not yet been proven to run with production keyring enforcement.
 
-Live acceptance is separate from source/build certification.
+Railway was subsequently hardened by explicitly setting candidate `CJ_ENV=production`. A controlled redeploy then failed closed with:
 
-The existing non-canonical Railway service `central-juridica-v3-1-1` has already demonstrated health/readiness plus authenticated intake and idempotent replay. On 2026-09-22 the current-source DR attempt initially failed closed with `FINAL_DR_SOURCE_TARGET_NOT_ISOLATED`, proving the configured DR target was not isolated.
+`Modo production exige CJ_AUDIT_KEYRING ou CJ_AUDIT_KEY.`
 
-A dedicated Neon branch `cj-dr-verification-20260922` was then created under the v3.2 Neon project and configured only as `CJ_DR_DATABASE_URL`. The next in-place candidate deployment produced `FINAL_KEY_BACKUP_RESTORE_VERIFIED` with `sourceTargetSeparated=true`, `sessionsRestored=0` and matching semantic fingerprint, then passed `/api/ready`.
+Reference-variable attempts to reuse the rollback service's keyring did not resolve a usable production audit keyring.
 
-The existing isolated verifier has independently proven health 200, ready 200, unauthorized intake 401, successful intake and idempotent replay.
+Earlier restore diagnostics also proved that the historical audit chain contains metadata/entries under key id `audit-2026-09`. Missing that key produced `KEY_NOT_FOUND` / `META_KEY_NOT_FOUND`. A new random key cannot validate the historical HMAC chain and must not be substituted for the original key.
 
-## Promotion boundary
+## Code hardening
 
-This evidence does not itself repoint a canonical domain, remove the 3.1.1 rollback baseline, or authorize destructive cleanup of the DR branch. Those actions remain separate promotion/cleanup decisions.
+`final-drill.mjs` now requires:
+
+`CJ_ENV === 'production'`
+
+before opening either source or DR database. Otherwise it stops with:
+
+`FINAL_DR_REQUIRES_PRODUCTION_ENV`
+
+The deterministic source certification pins this invariant in addition to the existing fail-closed checks:
+
+- `FINAL_DR_SOURCE_TARGET_NOT_ISOLATED`;
+- `FINAL_DR_BACKUP_VERIFY_FAILED`;
+- `FINAL_DR_SEMANTIC_FINGERPRINT_MISMATCH`;
+- `FINAL_DR_SESSIONS_RESTORED`;
+- `FINAL_KEY_BACKUP_RESTORE_VERIFIED`.
+
+This prevents a future DR PASS from silently relying on the development audit-key fallback.
+
+## Evidence that remains valid
+
+The dedicated source/build certification and isolated intake verifier remain valid independent evidence:
+
+- exact immutable v3.2 package/build certification;
+- reconstructed `3.2.0-preview` runtime;
+- health/readiness behavior;
+- unauthenticated intake rejection;
+- authenticated intake creation;
+- idempotent replay;
+- source/target DR separation mechanics.
+
+Those checks do not prove possession of the historical production audit key.
+
+## Current release blocker
+
+Production DR acceptance remains **BLOCKED / HUMAN_OR_SECRET_CONFIGURATION** until the authoritative secret source restores the historical audit key material required for key id `audit-2026-09`.
+
+The secret must be restored through Railway/shared-variable/original secret authority without copying the value into GitHub, chat, SAN state or logs.
+
+Do not:
+
+- revert `CJ_ENV` to development/non-production;
+- generate a replacement key and call it `audit-2026-09`;
+- reset or rebaseline the existing audit chain merely to make restore pass;
+- repoint the canonical domain before production DR acceptance;
+- remove the v3.1.1 rollback baseline.
+
+## Promotion sequence
+
+After authoritative key recovery:
+
+1. repin the candidate Dockerfile to an exact commit containing this production-only DR guard;
+2. run the deterministic source/build certification;
+3. run exactly one candidate deployment under `CJ_ENV=production`;
+4. require encrypted DR restore + historical audit verification + source/target separation + zero restored sessions;
+5. require health/readiness PASS;
+6. run the isolated verifier and require 401 → 201 → replay 200;
+7. only then make a separate canonical-domain/cutover decision.
