@@ -1,12 +1,46 @@
-# Central Jurídica v3.2 — runtime-source certification — 2026-09-22
+# Central Jurídica v3.2 — current release certification — 2026-09-22
 
-This follow-up gate certifies the six-commit delta added after the first v3.2 source/build certification.
+## Scope
 
-- certified base: `6d1858690c7c298f5100cee97f01bb0a07ddb4bc`
-- current source snapshot: `eabfb4da6b4e5207cb25d569c5e434829c2e5614`
-- expected delta: six commits / six files
-- new capability: isolated encrypted DR drill plus isolated intake verifier package
+This gate certifies the current non-canonical v3.2 Railway candidate source lineage without changing the canonical domain or the 3.1.1 rollback baseline.
 
-The gate preserves the prior overlay hash and immutable Docker source pin, rebuilds the v3.2 candidate, checks the final DR drill fail-closed invariants, validates the verifier package and smoke contract, and does not access Railway secrets or mutate a database.
+- certified runtime/verifier base: `498e8348b65eb5c1a1763596b4415328877e255c`
+- current release source snapshot: `5f3c2045c6e082a69e0b26fc2f64168264f96e52`
+- exact delta: three commits / three files
+- current Docker package pin: `534b2a2e5c87125f9c77b27a915463d4daeaa229`
+- package path: `central-juridica-railway-v3.2.0`
 
-Live runtime acceptance remains separate: the existing non-canonical candidate service must keep health/readiness green, the isolated verifier must prove unauthorized rejection + first intake + idempotent replay, and the DR drill must execute against distinct source/target databases before any canonical cutover.
+Expected release-only delta:
+
+- `dashboard-backend/Dockerfile.central-juridica-v32-preview`
+- `dashboard-backend/CJ_V32_SOURCE_REFRESH_2026-09-22.txt`
+- `central-juridica-v32-verifier/smoke.mjs`
+
+The refresh marker has no runtime behavior. The Dockerfile must keep an immutable commit pin and must not regress to the historical v3.1.1 wrapper path.
+
+## Deterministic source/build gate
+
+The certification workflow must:
+
+1. prove the exact three-commit/three-file lineage above;
+2. prove the certification branch does not alter the candidate package, Dockerfile or verifier relative to the source snapshot;
+3. retain the nine-part overlay transport hash;
+4. rebuild the reconstructed `3.2.0-preview` runtime;
+5. validate intake modules, OpenAPI contract and fail-closed DR invariants;
+6. validate the isolated verifier package;
+7. build the Railway Docker candidate from the immutable source pin;
+8. avoid Railway secrets and production database mutation during source/build certification.
+
+## Live runtime evidence
+
+Live acceptance is separate from source/build certification.
+
+The existing non-canonical Railway service `central-juridica-v3-1-1` has already demonstrated health/readiness plus authenticated intake and idempotent replay. On 2026-09-22 the current-source DR attempt initially failed closed with `FINAL_DR_SOURCE_TARGET_NOT_ISOLATED`, proving the configured DR target was not isolated.
+
+A dedicated Neon branch `cj-dr-verification-20260922` was then created under the v3.2 Neon project and configured only as `CJ_DR_DATABASE_URL`. The next in-place candidate deployment produced `FINAL_KEY_BACKUP_RESTORE_VERIFIED` with `sourceTargetSeparated=true`, `sessionsRestored=0` and matching semantic fingerprint, then passed `/api/ready`.
+
+The existing isolated verifier has independently proven health 200, ready 200, unauthorized intake 401, successful intake and idempotent replay.
+
+## Promotion boundary
+
+This evidence does not itself repoint a canonical domain, remove the 3.1.1 rollback baseline, or authorize destructive cleanup of the DR branch. Those actions remain separate promotion/cleanup decisions.
