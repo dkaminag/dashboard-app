@@ -3,12 +3,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BASE = '498e8348b65eb5c1a1763596b4415328877e255c';
-const SOURCE = '5f3c2045c6e082a69e0b26fc2f64168264f96e52';
+const BASE = '15f88f533c6c386f274da79b435418f64a27fc3e';
+const SOURCE = '133f5bc47aacd03b4e2233e54c9d2e8434f72554';
 const EXPECTED = [
-  'central-juridica-v32-verifier/smoke.mjs',
-  'dashboard-backend/CJ_V32_SOURCE_REFRESH_2026-09-22.txt',
-  'dashboard-backend/Dockerfile.central-juridica-v32-preview',
+  'central-juridica-railway-v3.2.0/final-drill.mjs',
 ].sort();
 
 function git(args) {
@@ -18,7 +16,7 @@ function git(args) {
 if (git(['merge-base', BASE, SOURCE]) !== BASE) {
   throw new Error('CJ_V32_BASE_LINEAGE_MISMATCH');
 }
-if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '3') {
+if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '1') {
   throw new Error('CJ_V32_SOURCE_COMMIT_COUNT_MISMATCH');
 }
 
@@ -83,6 +81,7 @@ if (dockerfile.includes('/central-juridica-railway-v3.1.1/package.json')) {
 
 const drill = fs.readFileSync(path.join(packageRoot, 'final-drill.mjs'), 'utf8');
 for (const required of [
+  'FINAL_DR_REQUIRES_PRODUCTION_ENV',
   'FINAL_DR_SOURCE_TARGET_NOT_ISOLATED',
   'FINAL_DR_BACKUP_VERIFY_FAILED',
   'FINAL_DR_SEMANTIC_FINGERPRINT_MISMATCH',
@@ -112,7 +111,7 @@ console.log(JSON.stringify({
   passed: true,
   base: BASE,
   source: SOURCE,
-  commits: 3,
+  commits: 1,
   changedFiles: changed,
   overlayParts: overlayNames.length,
   overlayTextSha256: overlaySha,
