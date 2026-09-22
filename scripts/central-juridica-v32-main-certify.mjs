@@ -3,11 +3,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BASE = 'e844ca9b1ef15500971daba024c33e2cd15fd054';
-const SOURCE = '42aeae42db77ac2f4ad964ad1415df2539943b1c';
+const BASE = '6d1858690c7c298f5100cee97f01bb0a07ddb4bc';
+const SOURCE = 'eabfb4da6b4e5207cb25d569c5e434829c2e5614';
 const EXPECTED = [
-  'central-juridica-railway-v3.2.0/intake-e2e-smoke.mjs',
-  'dashboard-backend/Dockerfile.central-juridica-v32-preview',
+  'central-juridica-railway-v3.2.0/final-drill.mjs',
+  'central-juridica-railway-v3.2.0/package.json',
+  'central-juridica-v32-verifier/DEPLOY_REV_20260922_1511.txt',
+  'central-juridica-v32-verifier/package.json',
+  'central-juridica-v32-verifier/server.mjs',
+  'central-juridica-v32-verifier/smoke.mjs',
 ].sort();
 
 function git(args) {
@@ -17,7 +21,7 @@ function git(args) {
 if (git(['merge-base', BASE, SOURCE]) !== BASE) {
   throw new Error('CJ_V32_BASE_LINEAGE_MISMATCH');
 }
-if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '2') {
+if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '6') {
   throw new Error('CJ_V32_SOURCE_COMMIT_COUNT_MISMATCH');
 }
 
@@ -37,6 +41,7 @@ execFileSync('git', [
   '--',
   'central-juridica-railway-v3.2.0',
   'dashboard-backend/Dockerfile.central-juridica-v32-preview',
+  'central-juridica-v32-verifier',
 ], { stdio: 'inherit' });
 
 const packageRoot = path.resolve('central-juridica-railway-v3.2.0');
@@ -73,12 +78,38 @@ if (/tar\.gz\/(main|master|HEAD)(?:['"\s]|$)/.test(dockerfile)) {
   throw new Error('MUTABLE_DOCKER_SOURCE_REF');
 }
 
+const drill = fs.readFileSync(path.join(packageRoot, 'final-drill.mjs'), 'utf8');
+for (const required of [
+  'FINAL_DR_SOURCE_TARGET_NOT_ISOLATED',
+  'FINAL_DR_BACKUP_VERIFY_FAILED',
+  'FINAL_DR_SEMANTIC_FINGERPRINT_MISMATCH',
+  'FINAL_DR_SESSIONS_RESTORED',
+  'FINAL_KEY_BACKUP_RESTORE_VERIFIED',
+]) {
+  if (!drill.includes(required)) throw new Error('DR_FAIL_CLOSED_INVARIANT_MISSING:' + required);
+}
+
+const verifierRoot = path.resolve('central-juridica-v32-verifier');
+const smoke = fs.readFileSync(path.join(verifierRoot, 'smoke.mjs'), 'utf8');
+for (const required of [
+  'V32_E2E_CONFIG_MISSING',
+  'V32_HEALTH_FAILED_',
+  'V32_READY_FAILED_',
+  'V32_UNAUTH_NOT_BLOCKED_',
+  'V32_FIRST_INGEST_FAILED_',
+  'V32_REPLAY_FAILED_',
+  'CENTRAL_JURIDICA_V32_INTAKE_E2E',
+  'replayed: second.body.replayed === true',
+]) {
+  if (!smoke.includes(required)) throw new Error('VERIFIER_FAIL_CLOSED_INVARIANT_MISSING:' + required);
+}
+
 console.log(JSON.stringify({
-  event: 'CENTRAL_JURIDICA_V32_SOURCE_CERTIFICATION',
+  event: 'CENTRAL_JURIDICA_V32_RUNTIME_SOURCE_CERTIFICATION',
   passed: true,
   base: BASE,
   source: SOURCE,
-  commits: 2,
+  commits: 6,
   changedFiles: changed,
   overlayParts: overlayNames.length,
   overlayTextSha256: overlaySha,

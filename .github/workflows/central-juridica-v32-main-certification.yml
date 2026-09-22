@@ -1,4 +1,4 @@
-name: Central Juridica v3.2 Main Certification
+name: Central Juridica v3.2 Runtime Source Certification
 
 on:
   pull_request:
@@ -40,6 +40,7 @@ jobs:
           test -f runtime/src/postgres-leads.mjs
           test -f runtime/contracts/central-juridica-intake-v1.openapi.json
           node --check intake-e2e-smoke.mjs
+          node --check final-drill.mjs
           node --check runtime/src/server.mjs
           node --check runtime/src/intake-auth.mjs
           node --check runtime/src/leads.mjs
@@ -49,11 +50,18 @@ jobs:
         working-directory: central-juridica-railway-v3.2.0
         run: node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('./runtime/contracts/central-juridica-intake-v1.openapi.json','utf8')); if(!c.paths?.['/api/intake/leads']?.post) process.exit(1)"
 
+      - name: Verify isolated verifier package
+        working-directory: central-juridica-v32-verifier
+        run: |
+          npm run build
+          node --check smoke.mjs
+          node --check server.mjs
+
       - name: Build Railway Docker candidate
-        run: docker build --file dashboard-backend/Dockerfile.central-juridica-v32-preview --tag cj-v32-main-cert:42ae dashboard-backend
+        run: docker build --file dashboard-backend/Dockerfile.central-juridica-v32-preview --tag cj-v32-runtime-cert:eabf dashboard-backend
 
       - name: Gate summary
         run: |
-          echo CJ_V32_MAIN_CERTIFICATION=PASS
+          echo CJ_V32_RUNTIME_SOURCE_CERTIFICATION=PASS
           echo PRODUCTION_MUTATED=FALSE
           echo RUNTIME_SECRETS_EXERCISED=FALSE
