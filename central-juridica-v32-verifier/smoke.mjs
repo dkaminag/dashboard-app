@@ -16,12 +16,12 @@ const ready = await fetch(base + '/api/ready');
 const readyBody = await readJson(ready);
 if (ready.status !== 200 || readyBody.ok !== true) throw new Error('V32_READY_FAILED_' + ready.status);
 
-const key = 'qa-v32-intake-20260922-001';
+const key = 'qa-v32-intake-20260922-final-002';
 const payload = {
   name: 'Lead QA Preview',
   organization: 'QA Synthetic',
   profileType: 'Empresa',
-  email: 'qa-preview@example.com',
+  email: 'qa-v32-final@example.invalid',
   phone: '',
   preferredChannel: 'E-mail',
   area: 'Trabalhista Empresarial',
@@ -31,7 +31,7 @@ const payload = {
   landingPage: '/qa-preview',
   utmSource: 'qa',
   utmMedium: 'synthetic',
-  utmCampaign: 'v32-preview',
+  utmCampaign: 'v32-final-20260922',
   referrer: '',
   contentCluster: 'qa'
 };

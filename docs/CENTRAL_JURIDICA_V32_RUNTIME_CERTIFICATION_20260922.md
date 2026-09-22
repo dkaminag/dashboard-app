@@ -5,8 +5,8 @@
 This gate certifies the current non-canonical v3.2 Railway candidate source lineage without changing the canonical domain or the 3.1.1 rollback baseline.
 
 - certified runtime/verifier base: `498e8348b65eb5c1a1763596b4415328877e255c`
-- current release source snapshot: `67c9a14416dac1007116ae858c1b314159897b71`
-- exact delta: two commits / two files
+- current release source snapshot: `5f3c2045c6e082a69e0b26fc2f64168264f96e52`
+- exact delta: three commits / three files
 - current Docker package pin: `534b2a2e5c87125f9c77b27a915463d4daeaa229`
 - package path: `central-juridica-railway-v3.2.0`
 
@@ -14,6 +14,7 @@ Expected release-only delta:
 
 - `dashboard-backend/Dockerfile.central-juridica-v32-preview`
 - `dashboard-backend/CJ_V32_SOURCE_REFRESH_2026-09-22.txt`
+- `central-juridica-v32-verifier/smoke.mjs`
 
 The refresh marker has no runtime behavior. The Dockerfile must keep an immutable commit pin and must not regress to the historical v3.1.1 wrapper path.
 
@@ -21,7 +22,7 @@ The refresh marker has no runtime behavior. The Dockerfile must keep an immutabl
 
 The certification workflow must:
 
-1. prove the exact two-commit/two-file lineage above;
+1. prove the exact three-commit/three-file lineage above;
 2. prove the certification branch does not alter the candidate package, Dockerfile or verifier relative to the source snapshot;
 3. retain the nine-part overlay transport hash;
 4. rebuild the reconstructed `3.2.0-preview` runtime;

@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const BASE = '498e8348b65eb5c1a1763596b4415328877e255c';
-const SOURCE = '67c9a14416dac1007116ae858c1b314159897b71';
+const SOURCE = '5f3c2045c6e082a69e0b26fc2f64168264f96e52';
 const EXPECTED = [
+  'central-juridica-v32-verifier/smoke.mjs',
   'dashboard-backend/CJ_V32_SOURCE_REFRESH_2026-09-22.txt',
   'dashboard-backend/Dockerfile.central-juridica-v32-preview',
 ].sort();
@@ -17,7 +18,7 @@ function git(args) {
 if (git(['merge-base', BASE, SOURCE]) !== BASE) {
   throw new Error('CJ_V32_BASE_LINEAGE_MISMATCH');
 }
-if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '2') {
+if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '3') {
   throw new Error('CJ_V32_SOURCE_COMMIT_COUNT_MISMATCH');
 }
 
@@ -111,7 +112,7 @@ console.log(JSON.stringify({
   passed: true,
   base: BASE,
   source: SOURCE,
-  commits: 2,
+  commits: 3,
   changedFiles: changed,
   overlayParts: overlayNames.length,
   overlayTextSha256: overlaySha,
