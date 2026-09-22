@@ -1,0 +1,35 @@
+name: Central Juridica Certified Production Package
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-production-package.yml"
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c2873d550991af51a596538fdf0166ba920f8935
+      - name: Verify certified wrapper
+        run: |
+          set -euo pipefail
+          test -f central-juridica-railway-v3.1.1/package.json
+          node -e "const p=require('./central-juridica-railway-v3.1.1/package.json'); if(p.version!=='3.1.1') process.exit(1)"
+          test "$(find central-juridica-railway-v3.1.1 -name 'runtime.bundle.part*.b64' | wc -l)" -eq 9
+      - name: Build package
+        run: |
+          set -euo pipefail
+          zip -qr central-juridica-production-v3.1.1-certified.zip central-juridica-railway-v3.1.1
+          sha256sum central-juridica-production-v3.1.1-certified.zip | tee central-juridica-production-v3.1.1-certified.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-production-v3-1-1-certified
+          path: |
+            central-juridica-production-v3.1.1-certified.zip
+            central-juridica-production-v3.1.1-certified.sha256
+          if-no-files-found: error
