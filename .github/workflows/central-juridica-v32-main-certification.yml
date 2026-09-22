@@ -1,0 +1,59 @@
+name: Central Juridica v3.2 Main Certification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Verify source lineage and immutable package evidence
+        run: node scripts/central-juridica-v32-main-certify.mjs
+
+      - name: Build reconstructed v3.2 candidate
+        working-directory: central-juridica-railway-v3.2.0
+        run: npm run build
+
+      - name: Verify reconstructed candidate
+        working-directory: central-juridica-railway-v3.2.0
+        run: |
+          node -e "const p=require('./runtime/package.json'); if(p.version!=='3.2.0-preview') process.exit(1)"
+          test -f runtime/src/intake-auth.mjs
+          test -f runtime/src/leads.mjs
+          test -f runtime/src/postgres-leads.mjs
+          test -f runtime/contracts/central-juridica-intake-v1.openapi.json
+          node --check intake-e2e-smoke.mjs
+          node --check runtime/src/server.mjs
+          node --check runtime/src/intake-auth.mjs
+          node --check runtime/src/leads.mjs
+          node --check runtime/src/postgres-leads.mjs
+
+      - name: Verify intake OpenAPI path
+        working-directory: central-juridica-railway-v3.2.0
+        run: node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('./runtime/contracts/central-juridica-intake-v1.openapi.json','utf8')); if(!c.paths?.['/api/intake/leads']?.post) process.exit(1)"
+
+      - name: Build Railway Docker candidate
+        run: docker build --file dashboard-backend/Dockerfile.central-juridica-v32-preview --tag cj-v32-main-cert:42ae dashboard-backend
+
+      - name: Gate summary
+        run: |
+          echo CJ_V32_MAIN_CERTIFICATION=PASS
+          echo PRODUCTION_MUTATED=FALSE
+          echo RUNTIME_SECRETS_EXERCISED=FALSE
