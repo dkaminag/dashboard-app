@@ -41,5 +41,19 @@ jobs:
           echo '=== postgres-store createStore usage ==='
           grep -n -E 'audit|keyring|createStore|PostgresStateStore' runtime/src/postgres-store.mjs | head -n 160 || true
 
+      - name: Print all keyring loader contracts
+        working-directory: central-juridica-railway-v3.2.0
+        run: |
+          echo '=== KEYRING_LOADER_CONTRACTS ==='
+          grep -R -n -E 'parseKeyring|legacyEnvName|defaultKeyId|CJ_[A-Z0-9_]+KEY(RING)?|CJ_IDEMPOTENCY_KEY' runtime/src | head -n 500 || true
+          echo '=== DOCUMENT_CRYPTO ==='
+          sed -n '1,220p' runtime/src/crypto-storage.mjs || true
+          echo '=== BACKUP_CRYPTO_CANDIDATES ==='
+          grep -R -n -E 'backup.*key|key.*backup|BACKUP_KEY|BACKUP_KEYRING' runtime/src | head -n 300 || true
+          echo '=== MFA_CRYPTO_CANDIDATES ==='
+          grep -R -n -E 'mfa.*key|key.*mfa|MFA_KEY|MFA_KEYRING' runtime/src | head -n 300 || true
+          echo '=== IDEMPOTENCY_CANDIDATES ==='
+          grep -R -n -E 'IDEMPOTENCY|idempotency.*key|key.*idempotency' runtime/src | head -n 300 || true
+
       - name: Summary
         run: echo CJ_V32_AUDIT_KEYRING_DIAGNOSTIC=PASS
