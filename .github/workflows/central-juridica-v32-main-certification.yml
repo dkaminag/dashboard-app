@@ -1,0 +1,152 @@
+name: Central Juridica v3.2 Main Certification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'central-juridica-railway-v3.2.0/**'
+      - 'dashboard-backend/Dockerfile.central-juridica-v32-preview'
+      - '.github/workflows/central-juridica-v32-main-certification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cj-v32-main-cert-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Verify narrowed source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=e844ca9b1ef15500971daba024c33e2cd15fd054
+          SOURCE=42aeae42db77ac2f4ad964ad1415df2539943b1c
+
+          test "$(git merge-base "$BASE" "$SOURCE")" = "$BASE"
+          test "$(git rev-list --count "$BASE..$SOURCE")" = "2"
+
+          mapfile -t changed < <(git diff --name-only "$BASE..$SOURCE" | sort)
+          printf '%s
+' "${changed[@]}"
+
+          expected=(
+            "central-juridica-railway-v3.2.0/intake-e2e-smoke.mjs"
+            "dashboard-backend/Dockerfile.central-juridica-v32-preview"
+          )
+          mapfile -t expected_sorted < <(printf '%s
+' "${expected[@]}" | sort)
+
+          test "${#changed[@]}" -eq 2
+          test "$(printf '%s
+' "${changed[@]}")" = "$(printf '%s
+' "${expected_sorted[@]}")"
+
+          # The certification branch may add governance files only; application
+          # source must remain byte-identical to the source snapshot under test.
+          git diff --exit-code "$SOURCE" --             central-juridica-railway-v3.2.0             dashboard-backend/Dockerfile.central-juridica-v32-preview
+
+          echo "CJ_V32_SOURCE_DELTA=PASS"
+          echo "CJ_V32_SOURCE_SHA=$SOURCE"
+
+      - name: Verify wrapper transport
+        working-directory: central-juridica-railway-v3.2.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+
+          const names = fs.readdirSync('.')
+            .filter(n => /^overlay\.v3\.2\.0\.part\d+\.b64$/.test(n))
+            .sort();
+
+          if (names.length !== 9) throw new Error('OVERLAY_PART_COUNT:' + names.length);
+
+          const encoded = names
+            .map(n => fs.readFileSync(n, 'utf8'))
+            .join('')
+            .replace(/\s+/g, '');
+
+          if (encoded.length !== 41924) throw new Error('OVERLAY_TEXT_LENGTH:' + encoded.length);
+
+          const sha = crypto.createHash('sha256').update(encoded, 'utf8').digest('hex');
+          if (sha !== 'ffa471575efe3a63e410241611e70efa9e118d100abdf124c40912a5b404ca75') {
+            throw new Error('OVERLAY_TEXT_SHA:' + sha);
+          }
+
+          console.log(JSON.stringify({parts:names.length,length:encoded.length,textSha256:sha}));
+          NODE
+
+      - name: Build reconstructed v3.2 candidate
+        working-directory: central-juridica-railway-v3.2.0
+        run: npm run build
+
+      - name: Verify reconstructed candidate and intake contract
+        working-directory: central-juridica-railway-v3.2.0
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node -e "const p=require('./runtime/package.json'); if(p.version!=='3.2.0-preview') process.exit(1); console.log(JSON.stringify({version:p.version}))"
+
+          test -f runtime/src/intake-auth.mjs
+          test -f runtime/src/leads.mjs
+          test -f runtime/src/postgres-leads.mjs
+          test -f runtime/contracts/central-juridica-intake-v1.openapi.json
+
+          node --check intake-e2e-smoke.mjs
+          node --check runtime/src/server.mjs
+          node --check runtime/src/leads.mjs
+          node --check runtime/src/postgres-leads.mjs
+          node --check runtime/src/intake-auth.mjs
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const contract = JSON.parse(
+            fs.readFileSync('./runtime/contracts/central-juridica-intake-v1.openapi.json', 'utf8')
+          );
+          if (!contract.paths?.['/api/intake/leads']?.post) process.exit(1);
+          console.log(JSON.stringify({contract:contract.info?.version,path:'/api/intake/leads'}));
+          NODE
+
+      - name: Verify immutable Docker source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "a20b5020164b247f127dad34467f0af584214226"             dashboard-backend/Dockerfile.central-juridica-v32-preview
+          if grep -E "tar\.gz/(main|master|HEAD)" dashboard-backend/Dockerfile.central-juridica-v32-preview; then
+            echo "Mutable source reference detected" >&2
+            exit 1
+          fi
+
+      - name: Build Railway Docker candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build             --file dashboard-backend/Dockerfile.central-juridica-v32-preview             --tag cj-v32-main-cert:42ae             dashboard-backend
+          docker image inspect cj-v32-main-cert:42ae --format 'built_image_id={{.Id}}'
+
+      - name: Gate summary
+        run: |
+          echo "CJ_V32_MAIN_CERTIFICATION=PASS"
+          echo "PRODUCTION_MUTATED=FALSE"
+          echo "RUNTIME_SECRETS_EXERCISED=FALSE"
