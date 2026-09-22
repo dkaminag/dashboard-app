@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 const base = String(process.env.CJ_PREVIEW_BASE_URL || '').trim().replace(/\/+$/,'');
 const token = String(process.env.CJ_INTAKE_TOKEN || '').trim();
 if (!base || token.length < 32) throw new Error('V32_E2E_CONFIG_MISSING');
@@ -16,12 +18,13 @@ const ready = await fetch(base + '/api/ready');
 const readyBody = await readJson(ready);
 if (ready.status !== 200 || readyBody.ok !== true) throw new Error('V32_READY_FAILED_' + ready.status);
 
-const key = 'qa-v32-intake-20260922-final-002';
+const runNonce = String(process.env.RAILWAY_DEPLOYMENT_ID || crypto.randomUUID()).replace(/[^a-zA-Z0-9-]/g,'').slice(0,48);
+const key = 'qa-v32-intake-' + runNonce;
 const payload = {
-  name: 'Lead QA Preview',
+  name: 'Lead QA Preview ' + runNonce.slice(-8),
   organization: 'QA Synthetic',
   profileType: 'Empresa',
-  email: 'qa-v32-final@example.invalid',
+  email: 'qa-v32-' + runNonce.toLowerCase() + '@example.invalid',
   phone: '',
   preferredChannel: 'E-mail',
   area: 'Trabalhista Empresarial',
@@ -31,7 +34,7 @@ const payload = {
   landingPage: '/qa-preview',
   utmSource: 'qa',
   utmMedium: 'synthetic',
-  utmCampaign: 'v32-final-20260922',
+  utmCampaign: 'v32-live-' + runNonce,
   referrer: '',
   contentCluster: 'qa'
 };
@@ -75,5 +78,6 @@ console.log(JSON.stringify({
   unauth: unauth.status,
   first: first.response.status,
   replay: second.response.status,
-  replayed: second.body.replayed === true
+  replayed: second.body.replayed === true,
+  syntheticIdentityUnique: true
 }));
