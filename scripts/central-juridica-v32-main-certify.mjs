@@ -3,15 +3,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BASE = '6d1858690c7c298f5100cee97f01bb0a07ddb4bc';
-const SOURCE = 'eabfb4da6b4e5207cb25d569c5e434829c2e5614';
+const BASE = '498e8348b65eb5c1a1763596b4415328877e255c';
+const SOURCE = '46efd3ad27f1a8b3346242b6b4e6455ffb51ed70';
 const EXPECTED = [
-  'central-juridica-railway-v3.2.0/final-drill.mjs',
-  'central-juridica-railway-v3.2.0/package.json',
-  'central-juridica-v32-verifier/DEPLOY_REV_20260922_1511.txt',
-  'central-juridica-v32-verifier/package.json',
-  'central-juridica-v32-verifier/server.mjs',
-  'central-juridica-v32-verifier/smoke.mjs',
+  'dashboard-backend/Dockerfile.central-juridica-v32-preview',
 ].sort();
 
 function git(args) {
@@ -21,7 +16,7 @@ function git(args) {
 if (git(['merge-base', BASE, SOURCE]) !== BASE) {
   throw new Error('CJ_V32_BASE_LINEAGE_MISMATCH');
 }
-if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '6') {
+if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '1') {
   throw new Error('CJ_V32_SOURCE_COMMIT_COUNT_MISMATCH');
 }
 
@@ -71,11 +66,18 @@ const dockerfile = fs.readFileSync(
   path.resolve('dashboard-backend/Dockerfile.central-juridica-v32-preview'),
   'utf8',
 );
-if (!dockerfile.includes('a20b5020164b247f127dad34467f0af584214226')) {
+if (!dockerfile.includes('498e8348b65eb5c1a1763596b4415328877e255c')) {
   throw new Error('IMMUTABLE_DOCKER_SOURCE_PIN_MISSING');
 }
 if (/tar\.gz\/(main|master|HEAD)(?:['"\s]|$)/.test(dockerfile)) {
   throw new Error('MUTABLE_DOCKER_SOURCE_REF');
+}
+
+if (!dockerfile.includes('/central-juridica-railway-v3.2.0/package.json')) {
+  throw new Error('CURRENT_V32_PACKAGE_PATH_MISSING');
+}
+if (dockerfile.includes('/central-juridica-railway-v3.1.1/package.json')) {
+  throw new Error('STALE_V31_PACKAGE_PATH_PRESENT');
 }
 
 const drill = fs.readFileSync(path.join(packageRoot, 'final-drill.mjs'), 'utf8');
@@ -109,7 +111,7 @@ console.log(JSON.stringify({
   passed: true,
   base: BASE,
   source: SOURCE,
-  commits: 6,
+  commits: 1,
   changedFiles: changed,
   overlayParts: overlayNames.length,
   overlayTextSha256: overlaySha,
