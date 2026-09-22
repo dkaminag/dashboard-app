@@ -34,6 +34,7 @@ jobs:
           echo '=== store-factory.mjs ==='
           sed -n '1,240p' runtime/src/store-factory.mjs
           echo '=== audit-integrity keyring API ==='
+          sed -n '1,48p' runtime/src/audit-integrity.mjs
           grep -n -E 'loadAuditKeyring|createAudit|keyring|activeKey|development-v1' runtime/src/audit-integrity.mjs | head -n 120 || true
           echo '=== postgres-store createStore usage ==='
           grep -n -E 'audit|keyring|createStore|PostgresStateStore' runtime/src/postgres-store.mjs | head -n 160 || true
