@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import { createStore } from './runtime/src/store-factory.mjs';
 import { createBackup, verifyBackup, restoreBackup } from './runtime/src/backup.mjs';
 
+const runtimeEnv = String(process.env.CJ_ENV || '').trim();
+if (runtimeEnv !== 'production') throw new Error('FINAL_DR_REQUIRES_PRODUCTION_ENV');
+
 const src = String(process.env.CJ_DATABASE_URL || '').trim();
 const dst = String(process.env.CJ_DR_DATABASE_URL || '').trim();
 if (!src || !dst) throw new Error('FINAL_DR_DATABASE_URL_MISSING');
