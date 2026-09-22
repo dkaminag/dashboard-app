@@ -1,0 +1,4 @@
+Central Jurídica v3.2 isolated Railway smoke target
+Date: 2026-09-22
+Purpose: trigger fresh-source deployment after root/watch configuration.
+No runtime behavior is defined by this file.
