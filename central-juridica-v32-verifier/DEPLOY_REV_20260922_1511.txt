@@ -1,0 +1,1 @@
+Central Juridica v3.2 isolated verifier source-deploy trigger.
