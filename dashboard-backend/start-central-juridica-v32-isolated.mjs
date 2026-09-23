@@ -10,6 +10,7 @@ function runtimeUrl(raw, envName, databaseName) {
     throw new Error('CJ_RUNTIME_DB_PASSWORD_POLICY_FAILED');
   }
   const url = new URL(value);
+  if (process.env.CJ_PG_SSL === 'true') url.searchParams.set('sslmode', 'verify-full');
   url.pathname = '/' + databaseName;
   url.username = runtimeRole;
   url.password = password;
