@@ -28,6 +28,7 @@ if (String(process.env.CJ_DR_DATABASE_URL || '').trim()) {
     drDatabaseName
   );
 }
+process.env.CJ_SCHEMA_PREPARED = 'true';
 delete process.env.CJ_RUNTIME_DB_PASSWORD;
 delete process.env.PGOPTIONS;
 
