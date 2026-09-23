@@ -1,0 +1,3 @@
+Central Juridica v3.2 deployment trigger.
+Target head includes schema-prepared runtime/DR separation and least-privilege database role checks.
+No secret material is stored in this marker.
