@@ -1,7 +1,7 @@
 FROM node:22-alpine
 RUN apk add --no-cache tar gzip
 WORKDIR /app
-RUN node -e "const fs=require('fs'); fetch('https://codeload.github.com/dkaminag/dashboard-app/tar.gz/534b2a2e5c87125f9c77b27a915463d4daeaa229').then(r=>{if(!r.ok) throw new Error('V32_RELEASE_FETCH_'+r.status); return r.arrayBuffer()}).then(b=>fs.writeFileSync('/tmp/cj-v32.tgz',Buffer.from(b)))"
+RUN node -e "const fs=require('fs'); fetch('https://codeload.github.com/dkaminag/dashboard-app/tar.gz/d507a9955be07ef710d410b5263686ac75caeeff').then(r=>{if(!r.ok) throw new Error('V32_RELEASE_FETCH_'+r.status); return r.arrayBuffer()}).then(b=>fs.writeFileSync('/tmp/cj-v32.tgz',Buffer.from(b)))"
 RUN mkdir -p /tmp/cj-v32-src && tar -xzf /tmp/cj-v32.tgz -C /tmp/cj-v32-src --strip-components=1 \
  && test -f /tmp/cj-v32-src/central-juridica-railway-v3.2.0/package.json \
  && cp -a /tmp/cj-v32-src/central-juridica-railway-v3.2.0 /app/candidate-package \
