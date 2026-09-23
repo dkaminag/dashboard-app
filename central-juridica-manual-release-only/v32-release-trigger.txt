@@ -1,7 +1,7 @@
 Central Juridica v3.2 production release trigger
 Date: 2026-09-23
 Runtime pin: d507a9955be07ef710d410b5263686ac75caeeff
-Reason: authorized fresh green-only Railway deployment after production keyrings were configured.
+Reason: authorized fresh green-only Railway deployment after isolated Docker config and database reference wiring were corrected.
 Release mode: central-juridica-manual-release-only
-Release nonce: green-v32-manual-20260923-02
+Release nonce: green-v32-manual-20260923-03
 Blue service mutation: forbidden
