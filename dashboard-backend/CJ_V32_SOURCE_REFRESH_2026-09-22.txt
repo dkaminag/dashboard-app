@@ -2,3 +2,4 @@ Central Jurídica v3.2 Railway source refresh marker
 Date: 2026-09-22
 Purpose: force a fresh GitHub source snapshot for the isolated v3.2 Railway target after configuring watchPatterns.
 No runtime behavior is defined by this file.
+Refresh sequence: 2026-09-23-keyring-rebind
