@@ -1,0 +1,24 @@
+name: Central Juridica Canonical HTTPS Probe
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-canonical-https-probe.yml"
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe canonical v3.1.1 safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://central-juridica-v3-1-1-cutover-production.up.railway.app"
+          for p in /api/health /api/ready; do
+            code="$(curl -sS -o body.json -w '%{http_code}' --max-time 20 "$base$p" || true)"
+            content_type="$(curl -sSI --max-time 20 "$base$p" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2; exit}')"
+            size="$(wc -c < body.json 2>/dev/null || echo 0)"
+            printf '{"path":"%s","status":"%s","contentType":"%s","bytes":%s}\n' "$p" "$code" "$content_type" "$size"
+            test "$code" = "200"
+          done
