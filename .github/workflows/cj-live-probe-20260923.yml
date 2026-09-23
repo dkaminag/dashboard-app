@@ -1,0 +1,45 @@
+name: Central Juridica Live Probe 2026-09-23
+on:
+  push:
+    branches:
+      - audit/cj-live-probe-20260923-current
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://central-juridica-v3-1-1-cutover-production.up.railway.app
+    steps:
+      - name: Probe public runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          root_code=$(curl -sS -o root.html -w '%{http_code}' "$BASE_URL/")
+          health_code=$(curl -sS -o health.json -w '%{http_code}' "$BASE_URL/api/health")
+          ready_code=$(curl -sS -o ready.json -w '%{http_code}' "$BASE_URL/api/ready")
+          dash_code=$(curl -sS -o dashboard.json -w '%{http_code}' "$BASE_URL/api/dashboard")
+          test "$root_code" = "200"
+          test "$health_code" = "200"
+          test "$ready_code" = "200"
+          test "$dash_code" = "401"
+          node - <<'NODE'
+          const fs=require('fs');
+          const health=JSON.parse(fs.readFileSync('health.json','utf8'));
+          const ready=JSON.parse(fs.readFileSync('ready.json','utf8'));
+          if(health.ok!==true) throw new Error('HEALTH_OK_FALSE');
+          if(health.version!=='3.1.1') throw new Error('VERSION_'+String(health.version));
+          if(ready.ok!==true || ready.ready!==true) throw new Error('READY_FALSE');
+          NODE
+          printf 'root=%s\nhealth=%s\nready=%s\ndashboard_unauth=%s\n' "$root_code" "$health_code" "$ready_code" "$dash_code" | tee probe-result.txt
+          sha256sum root.html health.json ready.json dashboard.json | tee probe-sha256.txt
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-juridica-live-probe-20260923
+          path: |
+            probe-result.txt
+            probe-sha256.txt
+            health.json
+            ready.json
