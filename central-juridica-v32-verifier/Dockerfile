@@ -1,0 +1,1 @@
+FROM node:22-alpine\nWORKDIR /app\nCOPY package.json smoke.mjs server.mjs ./\nRUN npm run build\nCMD [\"npm\",\"start\"]\n
