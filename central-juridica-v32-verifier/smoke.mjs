@@ -4,8 +4,9 @@ const base = String(process.env.CJ_PREVIEW_BASE_URL || '').trim().replace(/\/+$/
 const token = String(process.env.CJ_INTAKE_TOKEN || '').trim();
 const qaUser = String(process.env.CJ_QA_USER || '').trim();
 const qaPassword = String(process.env.CJ_QA_PASSWORD || '');
+const intakeOnly = String(process.env.CJ_QA_SMOKE_MODE || '').trim() === 'intake-only';
 if (!base || token.length < 32) throw new Error('V32_E2E_CONFIG_MISSING');
-if (!qaUser || !qaPassword) throw new Error('QA_SMOKE_CONFIG_MISSING');
+if (!intakeOnly && (!qaUser || !qaPassword)) throw new Error('QA_SMOKE_CONFIG_MISSING');
 
 async function readJson(response) { try { return await response.json(); } catch { return {}; } }
 
@@ -21,25 +22,38 @@ if (ready.status !== 200 || readyBody.ok !== true) throw new Error('V32_READY_FA
 const unauthDashboard = await fetch(base + '/api/dashboard');
 if (unauthDashboard.status !== 401) throw new Error('QA_UNAUTH_DASHBOARD_NOT_BLOCKED_' + unauthDashboard.status);
 
-const login = await fetch(base + '/api/login', {
-  method: 'POST',
-  headers: {'content-type':'application/json','origin':base},
-  body: JSON.stringify({username:qaUser,password:qaPassword})
-});
-const setCookie = login.headers.get('set-cookie') || '';
-const cookie = setCookie.split(';')[0];
-if (login.status !== 200 || !cookie) throw new Error('QA_LOGIN_FAILED_' + login.status);
-const authHeaders = {cookie};
-const session = await fetch(base + '/api/session', {headers:authHeaders});
-const dashboard = await fetch(base + '/api/dashboard', {headers:authHeaders});
-if (session.status !== 200 || dashboard.status !== 200) throw new Error('QA_AUTH_FLOW_FAILED_' + session.status + '_' + dashboard.status);
-const logout = await fetch(base + '/api/logout', {
-  method:'POST',
-  headers:{'content-type':'application/json','origin':base,cookie},
-  body:'{}'
-});
-const stale = await fetch(base + '/api/session', {headers:authHeaders});
-if (logout.status !== 200 || stale.status !== 401) throw new Error('QA_LOGOUT_FLOW_FAILED_' + logout.status + '_' + stale.status);
+let loginStatus = null;
+let sessionStatus = null;
+let dashboardStatus = null;
+let logoutStatus = null;
+let staleStatus = null;
+
+if (!intakeOnly) {
+  const login = await fetch(base + '/api/login', {
+    method: 'POST',
+    headers: {'content-type':'application/json','origin':base},
+    body: JSON.stringify({username:qaUser,password:qaPassword})
+  });
+  const setCookie = login.headers.get('set-cookie') || '';
+  const cookie = setCookie.split(';')[0];
+  loginStatus = login.status;
+  if (login.status !== 200 || !cookie) throw new Error('QA_LOGIN_FAILED_' + login.status);
+  const authHeaders = {cookie};
+  const session = await fetch(base + '/api/session', {headers:authHeaders});
+  const dashboard = await fetch(base + '/api/dashboard', {headers:authHeaders});
+  sessionStatus = session.status;
+  dashboardStatus = dashboard.status;
+  if (session.status !== 200 || dashboard.status !== 200) throw new Error('QA_AUTH_FLOW_FAILED_' + session.status + '_' + dashboard.status);
+  const logout = await fetch(base + '/api/logout', {
+    method:'POST',
+    headers:{'content-type':'application/json','origin':base,cookie},
+    body:'{}'
+  });
+  const stale = await fetch(base + '/api/session', {headers:authHeaders});
+  logoutStatus = logout.status;
+  staleStatus = stale.status;
+  if (logout.status !== 200 || stale.status !== 401) throw new Error('QA_LOGOUT_FLOW_FAILED_' + logout.status + '_' + stale.status);
+}
 
 const runNonce = String(process.env.RAILWAY_DEPLOYMENT_ID || crypto.randomUUID()).replace(/[^a-zA-Z0-9-]/g,'').slice(0,48);
 const key = 'qa-v32-intake-' + runNonce;
@@ -99,11 +113,12 @@ console.log(JSON.stringify({
   health:health.status,
   ready:ready.status,
   unauthDashboard:unauthDashboard.status,
-  login:login.status,
-  session:session.status,
-  dashboard:dashboard.status,
-  logout:logout.status,
-  staleSession:stale.status,
+  smokeMode:intakeOnly ? 'intake-only' : 'full',
+  login:loginStatus,
+  session:sessionStatus,
+  dashboard:dashboardStatus,
+  logout:logoutStatus,
+  staleSession:staleStatus,
   unauthIntake:unauthIntake.status,
   firstIntake:first.response.status,
   replayIntake:replay.response.status,
