@@ -1,0 +1,3 @@
+Central Juridica v3.2 deployment trigger.
+Pins PostgreSQL sslmode=verify-full when CJ_PG_SSL=true to preserve current TLS verification semantics across future pg driver upgrades.
+No secret material is stored in this marker.
