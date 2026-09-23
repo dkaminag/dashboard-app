@@ -1,0 +1,5 @@
+Trigger isolated Central Juridica v3.2 deployment after fail-closed DR database separation fix.
+Expected primary database: central_juridica_v32_prod
+Expected DR database: central_juridica_v32_dr
+Expected source/target isolation: TRUE
+Triggered: 2026-09-23

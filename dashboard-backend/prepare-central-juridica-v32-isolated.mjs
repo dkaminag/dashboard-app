@@ -1,17 +1,18 @@
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 
-const databaseName = 'central_juridica_v32_prod';
+const primaryDatabaseName = 'central_juridica_v32_prod';
+const drDatabaseName = 'central_juridica_v32_dr';
 const require = createRequire(new URL('./runtime/package.json', import.meta.url));
 const { Pool } = require('pg');
 
-function dedicatedUrl(raw) {
+function dedicatedUrl(raw, databaseName) {
   const url = new URL(raw);
   url.pathname = '/' + databaseName;
   return url.toString();
 }
 
-async function ensureDedicatedDatabase(envName) {
+async function ensureDedicatedDatabase(envName, databaseName) {
   const baseUrl = String(process.env[envName] || '').trim();
   if (!baseUrl) throw new Error(envName + '_MISSING');
   const options = {
@@ -35,7 +36,7 @@ async function ensureDedicatedDatabase(envName) {
     await admin.end();
   }
 
-  const nextUrl = dedicatedUrl(baseUrl);
+  const nextUrl = dedicatedUrl(baseUrl, databaseName);
   const verify = new Pool({...options, connectionString: nextUrl});
   try {
     const result = await verify.query('SELECT current_database() AS db');
@@ -46,10 +47,10 @@ async function ensureDedicatedDatabase(envName) {
   process.env[envName] = nextUrl;
 }
 
-await ensureDedicatedDatabase('CJ_DATABASE_URL');
-await ensureDedicatedDatabase('CJ_DR_DATABASE_URL');
+await ensureDedicatedDatabase('CJ_DATABASE_URL', primaryDatabaseName);
+await ensureDedicatedDatabase('CJ_DR_DATABASE_URL', drDatabaseName);
 
-async function ensureRuntimeSchema(envName) {
+async function ensureRuntimeSchema(envName, databaseName) {
   const databaseUrl = String(process.env[envName] || '').trim();
   if (!databaseUrl) throw new Error(envName + '_MISSING_BEFORE_SCHEMA_INIT');
   const { createStore } = await import('./runtime/src/store-factory.mjs');
@@ -62,8 +63,8 @@ async function ensureRuntimeSchema(envName) {
   }
 }
 
-await ensureRuntimeSchema('CJ_DATABASE_URL');
-await ensureRuntimeSchema('CJ_DR_DATABASE_URL');
+await ensureRuntimeSchema('CJ_DATABASE_URL', primaryDatabaseName);
+await ensureRuntimeSchema('CJ_DR_DATABASE_URL', drDatabaseName);
 
 async function run(script) {
   await new Promise((resolve, reject) => {
@@ -75,4 +76,4 @@ async function run(script) {
 
 await run('sync-qa-user.mjs');
 await run('final-drill.mjs');
-console.log(JSON.stringify({event:'isolated-prod-predeploy-passed',database:databaseName,version:'3.2.0-preview'}));
+console.log(JSON.stringify({event:'isolated-prod-predeploy-passed',primaryDatabase:primaryDatabaseName,drDatabase:drDatabaseName,version:'3.2.0-preview'}));
