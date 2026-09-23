@@ -49,6 +49,22 @@ async function ensureDedicatedDatabase(envName) {
 await ensureDedicatedDatabase('CJ_DATABASE_URL');
 await ensureDedicatedDatabase('CJ_DR_DATABASE_URL');
 
+async function ensureRuntimeSchema(envName) {
+  const databaseUrl = String(process.env[envName] || '').trim();
+  if (!databaseUrl) throw new Error(envName + '_MISSING_BEFORE_SCHEMA_INIT');
+  const { createStore } = await import('./runtime/src/store-factory.mjs');
+  const runtime = await createStore({ databaseUrl });
+  try {
+    await runtime.store.ensure();
+    console.log(JSON.stringify({event:'runtime-schema-ready',target:envName,database:databaseName}));
+  } finally {
+    if (runtime.pool) await runtime.pool.end();
+  }
+}
+
+await ensureRuntimeSchema('CJ_DATABASE_URL');
+await ensureRuntimeSchema('CJ_DR_DATABASE_URL');
+
 async function run(script) {
   await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script], { stdio: 'inherit', env: process.env });
