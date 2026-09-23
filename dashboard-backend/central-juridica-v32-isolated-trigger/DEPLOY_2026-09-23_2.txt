@@ -1,0 +1,2 @@
+Trigger isolated Central Juridica v3.2 source deployment with current Railway config.
+Dockerfile: Dockerfile.central-juridica-v32-isolated
