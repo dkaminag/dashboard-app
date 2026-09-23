@@ -156,13 +156,26 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
       'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "' + runtimeRole + '"'
     );
 
-    const tables = await admin.query(
-      "SELECT c.relname, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p')"
+    const identity = await admin.query('SELECT current_user AS role_name');
+    const adminRole = String(identity.rows?.[0]?.role_name || '').trim();
+    if (!adminRole) throw new Error(envName + '_ADMIN_ROLE_UNKNOWN');
+
+    await admin.query(
+      'GRANT "' + runtimeRole + '" TO ' + quoteIdentifier(adminRole)
     );
-    for (const table of tables.rows || []) {
-      if (table.owner === runtimeRole) continue;
+    try {
+      const tables = await admin.query(
+        "SELECT c.relname, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p')"
+      );
+      for (const table of tables.rows || []) {
+        if (table.owner === runtimeRole) continue;
+        await admin.query(
+          'ALTER TABLE ' + quoteIdentifier(table.relname) + ' OWNER TO "' + runtimeRole + '"'
+        );
+      }
+    } finally {
       await admin.query(
-        'ALTER TABLE ' + quoteIdentifier(table.relname) + ' OWNER TO "' + runtimeRole + '"'
+        'REVOKE "' + runtimeRole + '" FROM ' + quoteIdentifier(adminRole)
       );
     }
   } finally {
