@@ -1,0 +1,31 @@
+name: Central Juridica Current Runtime Acceptance
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-current-runtime-acceptance.yml"
+  workflow_dispatch:
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify canonical runtime without secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://central-juridica-v3-1-1-cutover-production.up.railway.app"
+          root_code="$(curl -sS -o root.html -w '%{http_code}' --max-time 20 "$base/" || true)"
+          health_code="$(curl -sS -o health.json -w '%{http_code}' --max-time 20 "$base/api/health" || true)"
+          ready_code="$(curl -sS -o ready.json -w '%{http_code}' --max-time 20 "$base/api/ready" || true)"
+          protected_code="$(curl -sS -o protected.json -w '%{http_code}' --max-time 20 "$base/api/dashboard" || true)"
+          root_marker=false
+          grep -qi "Central Jur" root.html && root_marker=true || true
+          version="$(node -e "const fs=require('fs');try{const j=JSON.parse(fs.readFileSync('health.json','utf8'));process.stdout.write(String(j.version||''))}catch{}")"
+          ready="$(node -e "const fs=require('fs');try{const j=JSON.parse(fs.readFileSync('ready.json','utf8'));process.stdout.write(String(j.ready??j.ok??''))}catch{}")"
+          printf '{"root":%s,"rootMarker":%s,"health":%s,"readyStatus":%s,"version":"%s","readyFlag":"%s","protected":%s}\n' "$root_code" "$root_marker" "$health_code" "$ready_code" "$version" "$ready" "$protected_code"
+          test "$root_code" = "200"
+          test "$root_marker" = "true"
+          test "$health_code" = "200"
+          test "$ready_code" = "200"
+          test "$protected_code" = "401"
