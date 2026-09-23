@@ -75,9 +75,14 @@ async function ensureRuntimeSchema(envName, databaseName) {
   }
 
   const { createStore } = await import('./runtime/src/store-factory.mjs');
+  const { createRateLimiter } = await import('./runtime/src/rate-limit.mjs');
   const runtime = await createStore({ databaseUrl });
   try {
     await runtime.store.ensure();
+    if (runtime.pool) {
+      const rateLimiter = createRateLimiter({ pool: runtime.pool });
+      await rateLimiter.ensure();
+    }
     console.log(JSON.stringify({event:'runtime-schema-ready',target:envName,database:databaseName}));
   } finally {
     if (runtime.pool) await runtime.pool.end();
@@ -213,14 +218,6 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
     await restricted.end();
   }
 
-  const { createStore } = await import('./runtime/src/store-factory.mjs');
-  const runtime = await createStore({ databaseUrl: url });
-  try {
-    await runtime.store.ensure();
-  } finally {
-    if (runtime.pool) await runtime.pool.end();
-  }
-
   console.log(JSON.stringify({
     event:'runtime-db-role-ready',
     target:envName,
@@ -238,6 +235,8 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
 
 await ensureLeastPrivilegeRole('CJ_DATABASE_URL', primaryDatabaseName);
 await ensureLeastPrivilegeRole('CJ_DR_DATABASE_URL', drDatabaseName);
+
+process.env.CJ_SCHEMA_PREPARED = 'true';
 
 async function run(script) {
   await new Promise((resolve, reject) => {
