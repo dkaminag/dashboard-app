@@ -113,9 +113,6 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
     }
 
     await admin.query(
-      'ALTER ROLE "' + runtimeRole + '" NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS'
-    );
-    await admin.query(
       'GRANT CONNECT, TEMPORARY ON DATABASE "' + databaseName + '" TO "' + runtimeRole + '"'
     );
     await admin.query(
@@ -157,6 +154,12 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
     }
     if (row.rolsuper || row.rolcreatedb || row.rolcreaterole || row.rolreplication || row.rolbypassrls) {
       throw new Error(envName + '_RUNTIME_ROLE_EXCESS_PRIVILEGE');
+    }
+    const memberships = await restricted.query(
+      'SELECT parent.rolname FROM pg_auth_members m JOIN pg_roles parent ON parent.oid=m.roleid JOIN pg_roles member ON member.oid=m.member WHERE member.rolname=current_user'
+    );
+    if ((memberships.rows || []).length !== 0) {
+      throw new Error(envName + '_RUNTIME_ROLE_UNEXPECTED_MEMBERSHIP');
     }
   } finally {
     await restricted.end();
