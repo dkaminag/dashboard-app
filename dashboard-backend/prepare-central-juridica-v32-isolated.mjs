@@ -156,17 +156,14 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
       'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "' + runtimeRole + '"'
     );
 
-    const objects = await admin.query(
-      "SELECT c.relname, c.relkind, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','S')"
+    const tables = await admin.query(
+      "SELECT c.relname, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p')"
     );
-    for (const object of objects.rows || []) {
-      if (object.owner === runtimeRole) continue;
-      const name = quoteIdentifier(object.relname);
-      if (object.relkind === 'S') {
-        await admin.query('ALTER SEQUENCE ' + name + ' OWNER TO "' + runtimeRole + '"');
-      } else {
-        await admin.query('ALTER TABLE ' + name + ' OWNER TO "' + runtimeRole + '"');
-      }
+    for (const table of tables.rows || []) {
+      if (table.owner === runtimeRole) continue;
+      await admin.query(
+        'ALTER TABLE ' + quoteIdentifier(table.relname) + ' OWNER TO "' + runtimeRole + '"'
+      );
     }
   } finally {
     await admin.end();
