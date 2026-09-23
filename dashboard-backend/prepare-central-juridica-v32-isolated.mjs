@@ -53,6 +53,27 @@ await ensureDedicatedDatabase('CJ_DR_DATABASE_URL', drDatabaseName);
 async function ensureRuntimeSchema(envName, databaseName) {
   const databaseUrl = String(process.env[envName] || '').trim();
   if (!databaseUrl) throw new Error(envName + '_MISSING_BEFORE_SCHEMA_INIT');
+
+  const probe = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 30000,
+    application_name: 'central-juridica-v32-schema-probe',
+    ssl: process.env.CJ_PG_SSL === 'true' ? { rejectUnauthorized: true } : undefined
+  });
+  try {
+    const existing = await probe.query(
+      "SELECT to_regclass('public.central_juridica_sessions') AS sessions"
+    );
+    if (existing.rows?.[0]?.sessions) {
+      console.log(JSON.stringify({event:'runtime-schema-existing',target:envName,database:databaseName}));
+      return;
+    }
+  } finally {
+    await probe.end();
+  }
+
   const { createStore } = await import('./runtime/src/store-factory.mjs');
   const runtime = await createStore({ databaseUrl });
   try {
@@ -74,6 +95,10 @@ if (!/^[A-Za-z0-9_-]{40,128}$/.test(runtimePassword)) {
 
 function quoteLiteral(value) {
   return "'" + String(value).replace(/'/g, "''") + "'";
+}
+
+function quoteIdentifier(value) {
+  return '"' + String(value).replace(/"/g, '""') + '"';
 }
 
 function runtimeUrl(raw, databaseName) {
@@ -130,6 +155,19 @@ async function ensureLeastPrivilegeRole(envName, databaseName) {
     await admin.query(
       'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "' + runtimeRole + '"'
     );
+
+    const objects = await admin.query(
+      "SELECT c.relname, c.relkind, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','S')"
+    );
+    for (const object of objects.rows || []) {
+      if (object.owner === runtimeRole) continue;
+      const name = quoteIdentifier(object.relname);
+      if (object.relkind === 'S') {
+        await admin.query('ALTER SEQUENCE ' + name + ' OWNER TO "' + runtimeRole + '"');
+      } else {
+        await admin.query('ALTER TABLE ' + name + ' OWNER TO "' + runtimeRole + '"');
+      }
+    }
   } finally {
     await admin.end();
   }
