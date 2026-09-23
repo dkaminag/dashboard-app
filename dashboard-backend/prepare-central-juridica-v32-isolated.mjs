@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
 
 const schema = 'central_juridica_v32_prod';
 const require = createRequire(new URL('./runtime/package.json', import.meta.url));
@@ -27,3 +28,15 @@ for (const envName of ['CJ_DATABASE_URL', 'CJ_DR_DATABASE_URL']) {
     await pool.end();
   }
 }
+
+async function run(script) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script], { stdio: 'inherit', env: process.env });
+    child.once('error', reject);
+    child.once('exit', code => code === 0 ? resolve() : reject(new Error(script + '_FAILED_' + code)));
+  });
+}
+
+await run('sync-qa-user.mjs');
+await run('final-drill.mjs');
+console.log(JSON.stringify({event:'isolated-prod-predeploy-passed',schema,version:'3.2.0-preview'}));
