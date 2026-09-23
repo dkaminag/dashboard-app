@@ -1,0 +1,1 @@
+Fail-closed canonical key-material metadata probe. No secrets. No runtime code.
