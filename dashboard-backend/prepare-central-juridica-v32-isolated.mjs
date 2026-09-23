@@ -6,15 +6,22 @@ const drDatabaseName = 'central_juridica_v32_dr';
 const require = createRequire(new URL('./runtime/package.json', import.meta.url));
 const { Pool } = require('pg');
 
-function dedicatedUrl(raw, databaseName) {
+function normalizedConnectionUrl(raw) {
   const url = new URL(raw);
+  if (process.env.CJ_PG_SSL === 'true') url.searchParams.set('sslmode', 'verify-full');
+  return url.toString();
+}
+
+function dedicatedUrl(raw, databaseName) {
+  const url = new URL(normalizedConnectionUrl(raw));
   url.pathname = '/' + databaseName;
   return url.toString();
 }
 
 async function ensureDedicatedDatabase(envName, databaseName) {
-  const baseUrl = String(process.env[envName] || '').trim();
-  if (!baseUrl) throw new Error(envName + '_MISSING');
+  const rawBaseUrl = String(process.env[envName] || '').trim();
+  if (!rawBaseUrl) throw new Error(envName + '_MISSING');
+  const baseUrl = normalizedConnectionUrl(rawBaseUrl);
   const options = {
     connectionString: baseUrl,
     max: 1,
@@ -107,7 +114,7 @@ function quoteIdentifier(value) {
 }
 
 function runtimeUrl(raw, databaseName) {
-  const url = new URL(raw);
+  const url = new URL(normalizedConnectionUrl(raw));
   url.pathname = '/' + databaseName;
   url.username = runtimeRole;
   url.password = runtimePassword;
