@@ -1,0 +1,34 @@
+name: Central Juridica Production UI Smoke
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-production-ui-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  public-ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      BASE_URL: https://central-juridica-v3-2-prod-production.up.railway.app
+    steps:
+      - name: Verify public UI and health
+        shell: bash
+        run: |
+          set -euo pipefail
+          ui_status="$(curl --fail-with-body --silent --show-error --location             --output /tmp/ui.html --dump-header /tmp/ui.headers             --write-out '%{http_code}' "$BASE_URL/")"
+          test "$ui_status" = "200"
+          grep -Eiq '^content-type: *text/html' /tmp/ui.headers
+          test "$(wc -c < /tmp/ui.html)" -gt 100
+
+          curl --fail --silent --show-error "$BASE_URL/api/health" > /tmp/health.json
+          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('/tmp/health.json'));if(j.ok!==true||j.version!=='3.2.0-preview')process.exit(1);console.log(JSON.stringify({event:'PUBLIC_UI_HEALTH_PASS',version:j.version}))"
+
+          ready_status="$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' "$BASE_URL/api/ready")"
+          test "$ready_status" = "200"
+          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('/tmp/ready.json'));if(j.ok!==true)process.exit(1);console.log(JSON.stringify({event:'PUBLIC_UI_READY_PASS'}))"
+
+          echo '{"event":"CENTRAL_JURIDICA_PUBLIC_UI_SMOKE","passed":true,"ui":200,"health":200,"ready":200}'
