@@ -1,0 +1,4 @@
+Central Juridica v3.2 isolated environment metadata probe.
+Purpose: trigger only the isolated Railway target watchPattern.
+No runtime code or production configuration is contained in this file.
+Timestamp: 2026-09-23.
