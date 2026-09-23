@@ -10,6 +10,13 @@ if (!intakeOnly && (!qaUser || !qaPassword)) throw new Error('QA_SMOKE_CONFIG_MI
 
 async function readJson(response) { try { return await response.json(); } catch { return {}; } }
 
+const ui = await fetch(base + '/');
+const uiType = String(ui.headers.get('content-type') || '').toLowerCase();
+const uiBody = await ui.text();
+if (ui.status !== 200 || !uiType.includes('text/html') || uiBody.trim().length < 100) {
+  throw new Error('V32_UI_FAILED_' + ui.status + '_' + uiType + '_' + uiBody.length);
+}
+
 const health = await fetch(base + '/api/health');
 const healthBody = await readJson(health);
 if (health.status !== 200 || healthBody.ok !== true || healthBody.version !== '3.2.0-preview') {
@@ -110,6 +117,8 @@ console.log(JSON.stringify({
   event:'CENTRAL_JURIDICA_V32_COMBINED_SMOKE',
   passed:true,
   version:healthBody.version,
+  ui:ui.status,
+  uiHtml:true,
   health:health.status,
   ready:ready.status,
   unauthDashboard:unauthDashboard.status,
