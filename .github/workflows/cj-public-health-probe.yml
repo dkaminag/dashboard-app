@@ -1,0 +1,32 @@
+name: Central Juridica Public Health Probe
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/cj-public-health-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe public cutover
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://central-juridica-v3-1-1-cutover-production.up.railway.app"
+          h=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 20 "$base/api/health")
+          r=$(curl -sS -o /tmp/ready.json -w '%{http_code}' --max-time 20 "$base/api/ready")
+          u=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$base/api/dashboard")
+          root=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$base/")
+          echo "root=$root"
+          echo "health=$h"
+          echo "ready=$r"
+          echo "unauth_dashboard=$u"
+          test "$root" = "200"
+          test "$h" = "200"
+          test "$r" = "200"
+          test "$u" = "401"
