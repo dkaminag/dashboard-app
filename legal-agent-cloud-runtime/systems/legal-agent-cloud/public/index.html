@@ -141,13 +141,19 @@
 
       <section class="admin-section">
         <h4>Provedor de IA</h4>
-        <p class="muted">A chave é criptografada antes de ser armazenada. Ela nunca é exibida novamente.</p>
+        <p class="muted">A chave é criptografada antes de ser armazenada e nunca é exibida novamente. O faturamento da API é separado da assinatura do ChatGPT.</p>
+        <p class="muted small-text">Use uma chave da OpenAI API (normalmente iniciada por <code>sk-</code> ou <code>sk-proj-</code>). Senha do ChatGPT, assinatura Plus/Pro ou token de sessão não funcionam aqui.</p>
         <form id="provider-form" class="inline-grid">
           <label>Modelo
-            <input id="provider-model" value="gpt-5.6-sol" required>
+            <select id="provider-model" required>
+              <option value="gpt-5.6-sol">GPT-5.6 Sol — máxima qualidade jurídica</option>
+              <option value="gpt-5.6-terra">GPT-5.6 Terra — equilíbrio custo/qualidade</option>
+              <option value="gpt-5.6-luna">GPT-5.6 Luna — baixo custo/alto volume</option>
+            </select>
           </label>
           <label>OpenAI API Key
-            <input id="provider-key" type="password" placeholder="sk-…">
+            <input id="provider-key" type="password" placeholder="sk-proj-…" autocomplete="off">
+            <span class="small-text muted">Crie/gerencie em platform.openai.com/api-keys.</span>
           </label>
           <label class="policy-ack">
             <input id="provider-policy-ack" type="checkbox" required>

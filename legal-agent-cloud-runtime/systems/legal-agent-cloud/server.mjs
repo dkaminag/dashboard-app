@@ -57,7 +57,6 @@ const ALLOWED_MIME = new Set([
 if (!DATABASE_URL) throw new Error("LEGAL_DATABASE_URL is required");
 const dataKey = Buffer.from(DATA_KEY_B64, "base64");
 if (dataKey.length !== 32) throw new Error("LEGAL_DATA_KEY_B64 must decode to exactly 32 bytes");
-if (!BOOTSTRAP_TOKEN || BOOTSTRAP_TOKEN.length < 24) throw new Error("LEGAL_BOOTSTRAP_TOKEN must contain at least 24 characters");
 
 const pgSslFlag = String(process.env.LEGAL_PG_SSL || "").toLowerCase();
 const pool = new Pool({
@@ -773,6 +772,10 @@ async function route(req, res) {
       json(res, 409, { error: "SETUP_ALREADY_COMPLETED" });
       return;
     }
+    if (!BOOTSTRAP_TOKEN || BOOTSTRAP_TOKEN.length < 24) {
+      json(res, 503, { error: "SETUP_TOKEN_NOT_CONFIGURED" });
+      return;
+    }
     const body = await readJson(req);
     if (!safeEqualString(body.token, BOOTSTRAP_TOKEN)) {
       await audit(null, "setup-denied", { ipHash: sha256(ip).slice(0, 16) });
@@ -1125,14 +1128,17 @@ async function route(req, res) {
     const apiKey = String(body.apiKey || "").trim();
     const model = String(body.model || DEFAULT_MODEL).trim();
     if (apiKey && (!apiKey.startsWith("sk-") || apiKey.length < 20)) {
+      await audit(user.id, "provider-config-denied", { reason: "INVALID_API_KEY_FORMAT" });
       json(res, 400, { error: "INVALID_API_KEY_FORMAT" });
       return;
     }
     if (!MODEL_RE.test(model)) {
+      await audit(user.id, "provider-config-denied", { reason: "INVALID_MODEL" });
       json(res, 400, { error: "INVALID_MODEL" });
       return;
     }
     if (body.dataPolicyAcknowledged !== true) {
+      await audit(user.id, "provider-config-denied", { reason: "DATA_POLICY_ACK_REQUIRED" });
       json(res, 400, { error: "DATA_POLICY_ACK_REQUIRED" });
       return;
     }

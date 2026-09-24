@@ -56,6 +56,7 @@ jobs:
           if ($status.StatusCode -ne 200) { throw "STATUS_HTTP_$($status.StatusCode)" }
           $statusBody = $status.Content | ConvertFrom-Json
           if ($statusBody.authenticated -ne $false) { throw "STATUS_ANON_AUTHENTICATED" }
+          if ($statusBody.setupRequired -ne $false) { throw "FIRST_ADMIN_SETUP_NOT_COMPLETED" }
           if ($null -eq $statusBody.PSObject.Properties["apiKeyConfigured"]) { throw "PRIVACY_API_KEY_FIELD_MISSING" }
           if ($null -eq $statusBody.PSObject.Properties["dataPolicyAcknowledged"]) { throw "PRIVACY_ACK_FIELD_MISSING" }
           if ($statusBody.apiKeyConfigured -ne $false) { throw "ANON_PROVIDER_METADATA_LEAK" }
@@ -65,6 +66,9 @@ jobs:
           if ($root.StatusCode -ne 200) { throw "ROOT_HTTP_$($root.StatusCode)" }
           if ($root.Content -notmatch "Pesquisar fontes públicas atuais \(opt-in\)") { throw "PUBLIC_SEARCH_OPT_IN_UI_MISSING" }
           if ($root.Content -notmatch 'id="provider-policy-ack"') { throw "PROVIDER_POLICY_ACK_UI_MISSING" }
+          if ($root.Content -notmatch 'value="gpt-5.6-sol"') { throw "MODEL_SOL_OPTION_MISSING" }
+          if ($root.Content -notmatch 'value="gpt-5.6-terra"') { throw "MODEL_TERRA_OPTION_MISSING" }
+          if ($root.Content -notmatch 'value="gpt-5.6-luna"') { throw "MODEL_LUNA_OPTION_MISSING" }
 
           $protected = Get-WithRetry "/api/threads"
           if ($protected.StatusCode -ne 401) { throw "PROTECTED_ROUTE_EXPECTED_401_GOT_$($protected.StatusCode)" }
