@@ -1,0 +1,5 @@
+Central Juridica v3.2 R3 recertification trigger
+Purpose: deploy current main through governed v3.2 watch pattern.
+Expected runtime databases: central_juridica_v32_prod_r3 / central_juridica_v32_dr_r3.
+Canonical domain routing is not changed by this trigger.
+Base main before trigger: dfdfefc83926413ece23c324ce68325d7a117aae
