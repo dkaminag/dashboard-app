@@ -111,7 +111,7 @@ try {
     }
 
     const deletedSessions = await client.query(
-      'DELETE FROM central_juridica_sessions WHERE user_id=$1 RETURNING session_id',
+      'DELETE FROM central_juridica_sessions WHERE user_id=$1',
       [user.id]
     );
 
