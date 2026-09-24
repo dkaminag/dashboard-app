@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Brito & Peovezan — Assistente Jurídico</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <main id="auth-view" class="auth-shell">
+    <section class="auth-card">
+      <div class="brand-mark">B&amp;P</div>
+      <h1>Assistente Jurídico</h1>
+      <p class="muted">Ambiente privado Brito &amp; Peovezan</p>
+
+      <form id="login-form" class="stack">
+        <label>Usuário
+          <input id="login-username" autocomplete="username" required>
+        </label>
+        <label>Senha
+          <input id="login-password" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit" class="primary">Entrar</button>
+      </form>
+
+      <form id="setup-form" class="stack hidden">
+        <div class="notice">Primeiro acesso: crie a conta administradora.</div>
+        <label>Token inicial
+          <input id="setup-token" type="password" autocomplete="off" required>
+        </label>
+        <label>Usuário administrador
+          <input id="setup-username" autocomplete="username" required>
+        </label>
+        <label>Nome
+          <input id="setup-display-name" required>
+        </label>
+        <label>Senha inicial
+          <input id="setup-password" type="password" minlength="12" autocomplete="new-password" required>
+        </label>
+        <button type="submit" class="primary">Ativar ambiente</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="app-view" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark small">B&amp;P</div>
+        <div>
+          <strong>Assistente Jurídico</strong>
+          <small id="user-label"></small>
+        </div>
+      </div>
+
+      <button id="new-thread" class="primary wide">+ Nova demanda</button>
+      <div class="sidebar-title">Demandas</div>
+      <div id="thread-list" class="thread-list"></div>
+
+      <div class="sidebar-footer">
+        <button id="profile-button" class="ghost wide">Minha senha</button>
+        <button id="admin-button" class="ghost wide hidden">Administração</button>
+        <button id="logout-button" class="ghost wide">Sair</button>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="workspace-header">
+        <div>
+          <h2 id="thread-title">Nova demanda</h2>
+          <div id="ai-status" class="status-pill">Verificando IA…</div>
+        </div>
+        <div class="controls">
+          <label class="compact">Modo
+            <select id="mode-select">
+              <option value="PARECER">Parecer</option>
+              <option value="AUTOS">Autos / processo</option>
+              <option value="CONTENCIOSO">Peça / contencioso</option>
+              <option value="CONTRATOS">Contratos</option>
+              <option value="TRABALHISTA">Trabalhista</option>
+              <option value="EXECUCAO">Execução</option>
+              <option value="PESQUISA">Pesquisa jurídica</option>
+              <option value="ADVERSARIAL_REVIEW">Revisão adversarial</option>
+            </select>
+          </label>
+          <label class="toggle">
+            <input id="web-search" type="checkbox" checked>
+            <span>Pesquisar fontes atuais</span>
+          </label>
+        </div>
+      </header>
+
+      <div id="empty-state" class="empty-state">
+        <h3>Selecione ou crie uma demanda</h3>
+        <p>Use o modo adequado, anexe documentos quando necessário e descreva o objetivo jurídico.</p>
+      </div>
+
+      <div id="messages" class="messages hidden" aria-live="polite"></div>
+
+      <form id="composer" class="composer">
+        <div id="file-list" class="file-list"></div>
+        <textarea id="message-input" rows="4" maxlength="80000"
+          placeholder="Descreva a demanda, questão jurídica ou peça a revisar…"></textarea>
+        <div class="composer-actions">
+          <label class="file-button">
+            <input id="file-input" type="file" multiple
+              accept=".pdf,.doc,.docx,.txt,.rtf,image/png,image/jpeg,image/webp">
+            Anexar
+          </label>
+          <span id="send-hint" class="muted small-text"></span>
+          <button id="send-button" type="submit" class="primary">Enviar</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <dialog id="profile-dialog">
+    <form id="password-form" class="dialog-card">
+      <div class="dialog-header">
+        <h3>Alterar minha senha</h3>
+        <button type="button" class="icon-button" data-close="profile-dialog">×</button>
+      </div>
+      <label>Senha atual
+        <input id="current-password" type="password" autocomplete="current-password" required>
+      </label>
+      <label>Nova senha
+        <input id="new-password" type="password" minlength="12" autocomplete="new-password" required>
+      </label>
+      <button type="submit" class="primary">Salvar</button>
+    </form>
+  </dialog>
+
+  <dialog id="admin-dialog">
+    <div class="dialog-card admin-card">
+      <div class="dialog-header">
+        <h3>Administração</h3>
+        <button type="button" class="icon-button" data-close="admin-dialog">×</button>
+      </div>
+
+      <section class="admin-section">
+        <h4>Provedor de IA</h4>
+        <p class="muted">A chave é criptografada antes de ser armazenada. Ela nunca é exibida novamente.</p>
+        <form id="provider-form" class="inline-grid">
+          <label>Modelo
+            <input id="provider-model" value="gpt-5.6-sol" required>
+          </label>
+          <label>OpenAI API Key
+            <input id="provider-key" type="password" placeholder="sk-…">
+          </label>
+          <button type="submit" class="primary">Salvar configuração</button>
+        </form>
+        <div id="provider-state" class="muted small-text"></div>
+      </section>
+
+      <section class="admin-section">
+        <h4>Usuárias</h4>
+        <form id="create-user-form" class="inline-grid">
+          <label>Usuário
+            <input id="new-user-username" required>
+          </label>
+          <label>Nome
+            <input id="new-user-name" required>
+          </label>
+          <label>Senha inicial
+            <input id="new-user-password" type="password" minlength="12" required>
+          </label>
+          <label>Perfil
+            <select id="new-user-role">
+              <option value="lawyer">Advogada</option>
+              <option value="admin">Administradora</option>
+            </select>
+          </label>
+          <button type="submit" class="primary">Criar usuária</button>
+        </form>
+        <div id="user-list" class="user-list"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
