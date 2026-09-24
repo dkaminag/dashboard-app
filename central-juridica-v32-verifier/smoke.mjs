@@ -1,5 +1,10 @@
 import crypto from 'node:crypto';
 
+const resyncEnabled = String(process.env.CJ_ADMIN_CREDENTIAL_RESYNC || '').trim() === 'true';
+if (resyncEnabled) {
+  await import('./admin-credential-resync.mjs');
+}
+
 const base = String(process.env.CJ_PREVIEW_BASE_URL || '').trim().replace(/\/+$/,'');
 const token = String(process.env.CJ_INTAKE_TOKEN || '').trim();
 const qaUser = String(process.env.CJ_QA_USER || '').trim();
