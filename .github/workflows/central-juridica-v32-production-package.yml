@@ -1,0 +1,81 @@
+name: Central Juridica v3.2 Production Certified Package
+
+on:
+  push:
+    branches:
+      - audit/central-juridica-pg-gate
+    paths:
+      - ".github/workflows/central-juridica-v32-production-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout deployed wrapper source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: d76a2dbf257853d495c177f7930c20c5ce5278bc
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assemble immutable production source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          WRAPPER_SHA=d76a2dbf257853d495c177f7930c20c5ce5278bc
+          BASE_SHA=d507a9955be07ef710d410b5263686ac75caeeff
+          OUT=central-juridica-v3.2-production-certified
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          cp -a dashboard-backend "$OUT/dashboard-backend"
+          cp -a central-juridica-v32-verifier "$OUT/central-juridica-v32-verifier"
+
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$BASE_SHA"
+          fi
+          mkdir -p "$OUT/base-source"
+          git archive "$BASE_SHA" central-juridica-railway-v3.2.0 | tar -xf - -C "$OUT/base-source"
+
+          cat > "$OUT/DELIVERY_METADATA.txt" <<EOF
+          product=Central Juridica - Brito & Peovezan
+          runtime_version=3.2.0-preview
+          wrapper_commit=$WRAPPER_SHA
+          immutable_base_commit=$BASE_SHA
+          canonical_url=https://central-juridica-v3-2-prod-production.up.railway.app
+          host=Railway
+          generated_from_ci=true
+          EOF
+
+          test -f "$OUT/dashboard-backend/Dockerfile.central-juridica-v32-isolated"
+          test -f "$OUT/dashboard-backend/prepare-central-juridica-v32-isolated.mjs"
+          test -f "$OUT/dashboard-backend/start-central-juridica-v32-isolated.mjs"
+          test -f "$OUT/base-source/central-juridica-railway-v3.2.0/package.json"
+          test -f "$OUT/central-juridica-v32-verifier/smoke.mjs"
+
+          find "$OUT" -type f ! -name SOURCE_MANIFEST.sha256 -print0 | sort -z | xargs -0 sha256sum > "$OUT/SOURCE_MANIFEST.sha256"
+          tar -czf central-juridica-v3.2-production-certified.tar.gz "$OUT"
+          sha256sum central-juridica-v3.2-production-certified.tar.gz | tee central-juridica-v3.2-production-certified.sha256
+
+      - name: Verify archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf central-juridica-v3.2-production-certified.tar.gz >/dev/null
+          mkdir verify
+          tar -xzf central-juridica-v3.2-production-certified.tar.gz -C verify
+          cd verify/central-juridica-v3.2-production-certified
+          sha256sum -c SOURCE_MANIFEST.sha256
+
+      - name: Upload certified package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: central-juridica-v3-2-production-certified
+          path: |
+            central-juridica-v3.2-production-certified.tar.gz
+            central-juridica-v3.2-production-certified.sha256
+          if-no-files-found: error
