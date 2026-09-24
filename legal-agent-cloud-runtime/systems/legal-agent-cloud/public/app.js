@@ -19,6 +19,8 @@ const errorMessages = {
   INVALID_USERNAME: "Use um usuário com pelo menos 3 caracteres, sem espaços.",
   USERNAME_EXISTS: "Esse usuário já existe.",
   AI_NOT_CONFIGURED: "A IA ainda não foi configurada pelo administrador.",
+  AI_DATA_POLICY_NOT_ACKNOWLEDGED: "O administrador ainda não confirmou a política de dados do provedor de IA.",
+  DATA_POLICY_ACK_REQUIRED: "Confirme a política de dados antes de ativar a IA.",
   AI_PROVIDER_ERROR: "O provedor de IA recusou ou não concluiu a solicitação.",
   AI_EMPTY_RESPONSE: "O provedor de IA respondeu sem conteúdo utilizável.",
   THREAD_NOT_FOUND: "A demanda não foi encontrada.",
@@ -462,9 +464,12 @@ async function loadAdmin() {
   ]);
   $("provider-model").value = provider.model || "gpt-5.6-sol";
   $("provider-key").value = "";
+  $("provider-policy-ack").checked = provider.dataPolicyAcknowledged === true;
   $("provider-state").textContent = provider.configured
-    ? `Configurado · ${provider.source} · ${provider.model}`
-    : "Ainda não configurado.";
+    ? `Configurado · ${provider.source} · ${provider.model} · política confirmada`
+    : provider.apiKeyConfigured
+      ? "Chave cadastrada; falta confirmar a política de dados."
+      : "Ainda não configurado.";
   renderUsers(users.users || []);
 }
 
@@ -535,6 +540,7 @@ $("provider-form").addEventListener("submit", async (event) => {
       body: {
         apiKey: $("provider-key").value.trim(),
         model: $("provider-model").value.trim(),
+        dataPolicyAcknowledged: $("provider-policy-ack").checked,
       },
     });
     $("provider-key").value = "";
