@@ -57,7 +57,7 @@ jobs:
           test -f "$OUT/base-source/central-juridica-railway-v3.2.0/package.json"
           test -f "$OUT/central-juridica-v32-verifier/smoke.mjs"
 
-          find "$OUT" -type f ! -name SOURCE_MANIFEST.sha256 -print0 | sort -z | xargs -0 sha256sum > "$OUT/SOURCE_MANIFEST.sha256"
+          (cd "$OUT" && find . -type f ! -name SOURCE_MANIFEST.sha256 -print0 | sort -z | xargs -0 sha256sum > SOURCE_MANIFEST.sha256)
           tar -czf central-juridica-v3.2-production-certified.tar.gz "$OUT"
           sha256sum central-juridica-v3.2-production-certified.tar.gz | tee central-juridica-v3.2-production-certified.sha256
 
