@@ -385,10 +385,12 @@ async function getProviderConfig() {
   const envKey = process.env.OPENAI_API_KEY || "";
   const storedKey = envKey ? null : await getSetting("openai_api_key");
   const model = (await getSetting("openai_model")) || DEFAULT_MODEL;
+  const policyAck = await getSetting("openai_data_policy_ack");
   return {
     apiKey: envKey || storedKey || "",
     model: MODEL_RE.test(model) ? model : DEFAULT_MODEL,
     source: envKey ? "environment" : storedKey ? "encrypted_setting" : "none",
+    dataPolicyAcknowledged: policyAck === "acknowledged",
   };
 }
 
@@ -616,6 +618,11 @@ async function callOpenAI({ history, message, files, mode, webSearch }) {
     error.statusCode = 503;
     throw error;
   }
+  if (!provider.dataPolicyAcknowledged) {
+    const error = new Error("AI_DATA_POLICY_NOT_ACKNOWLEDGED");
+    error.statusCode = 503;
+    throw error;
+  }
 
   const input = [];
   for (const item of history.slice(-HISTORY_MESSAGE_LIMIT)) {
@@ -739,12 +746,16 @@ async function route(req, res) {
   if (pathname === "/api/status" && method === "GET") {
     const user = await authenticate(req);
     const users = await getUserCount();
-    const provider = users > 0 && user ? await getProviderConfig() : { apiKey: "", model: DEFAULT_MODEL, source: "none" };
+    const provider = users > 0 && user
+      ? await getProviderConfig()
+      : { apiKey: "", model: DEFAULT_MODEL, source: "none", dataPolicyAcknowledged: false };
     json(res, 200, {
       setupRequired: users === 0,
       authenticated: Boolean(user),
       user,
-      aiConfigured: Boolean(provider.apiKey),
+      aiConfigured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
+      apiKeyConfigured: Boolean(provider.apiKey),
+      dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
       model: provider.model,
       providerSource: provider.source,
       modes: [...MODE_SET],
@@ -921,7 +932,7 @@ async function route(req, res) {
     const body = await readJson(req);
     const message = String(body.message || "").trim();
     const mode = String(body.mode || "PARECER").toUpperCase();
-    const webSearch = body.webSearch !== false;
+    const webSearch = body.webSearch === true;
     if (!message || message.length > MAX_MESSAGE_CHARS) {
       json(res, 400, { error: "INVALID_MESSAGE" });
       return;
@@ -1098,7 +1109,9 @@ async function route(req, res) {
     if (!requireAdmin(user, res)) return;
     const provider = await getProviderConfig();
     json(res, 200, {
-      configured: Boolean(provider.apiKey),
+      configured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
+      apiKeyConfigured: Boolean(provider.apiKey),
+      dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
       model: provider.model,
       source: provider.source,
       reasoningEffort: REASONING_EFFORT,
@@ -1119,11 +1132,26 @@ async function route(req, res) {
       json(res, 400, { error: "INVALID_MODEL" });
       return;
     }
+    if (body.dataPolicyAcknowledged !== true) {
+      json(res, 400, { error: "DATA_POLICY_ACK_REQUIRED" });
+      return;
+    }
     if (apiKey) await setSetting("openai_api_key", apiKey, user.id);
     await setSetting("openai_model", model, user.id);
+    await setSetting("openai_data_policy_ack", "acknowledged", user.id);
     const provider = await getProviderConfig();
-    await audit(user.id, "provider-config-updated", { model: provider.model, source: provider.source });
-    json(res, 200, { configured: Boolean(provider.apiKey), model: provider.model, source: provider.source });
+    await audit(user.id, "provider-config-updated", {
+      model: provider.model,
+      source: provider.source,
+      dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+    });
+    json(res, 200, {
+      configured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
+      apiKeyConfigured: Boolean(provider.apiKey),
+      dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      model: provider.model,
+      source: provider.source,
+    });
     return;
   }
 
