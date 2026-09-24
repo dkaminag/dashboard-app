@@ -15,13 +15,14 @@ if (!enabled) {
 }
 if (!/^[A-Za-z0-9._:-]{12,120}$/.test(nonce)) throw new Error('ADMIN_RESYNC_NONCE_POLICY_FAILED');
 
-const username = String(process.env.CJ_ADMIN_USER || '').trim().toLowerCase();
-const password = String(process.env.CJ_ADMIN_PASSWORD || '');
-const databaseBase = String(process.env.CJ_DATABASE_URL || '').trim();
+const username = String(process.env.CJ_ADMIN_RESYNC_USER || '').trim().toLowerCase();
+const password = String(process.env.CJ_ADMIN_RESYNC_PASSWORD || '');
+const databaseBase = String(process.env.CJ_ADMIN_RESYNC_DATABASE_URL || '').trim();
+const pgSsl = String(process.env.CJ_ADMIN_RESYNC_PG_SSL || '').trim() === 'true';
 
-if (!username || username.startsWith('qa_')) throw new Error('ADMIN_RESYNC_USERNAME_POLICY_FAILED');
-if (password.length < 14 || password.length > 128) throw new Error('ADMIN_RESYNC_PASSWORD_POLICY_FAILED');
-if (!databaseBase) throw new Error('ADMIN_RESYNC_DATABASE_URL_MISSING');
+if (!username || username.startsWith('qa_')) throw new Error('ADMIN_RESYNC_CANONICAL_USER_REFERENCE_MISSING');
+if (password.length < 14 || password.length > 128) throw new Error('ADMIN_RESYNC_CANONICAL_PASSWORD_REFERENCE_MISSING');
+if (!databaseBase) throw new Error('ADMIN_RESYNC_CANONICAL_DATABASE_REFERENCE_MISSING');
 
 function exec(cmd,args,cwd,env=process.env){
   return new Promise((resolve,reject)=>{
@@ -82,7 +83,7 @@ try {
 
   const dbUrl=new URL(databaseBase);
   dbUrl.pathname='/central_juridica_v32_prod_r3';
-  if(process.env.CJ_PG_SSL==='true') dbUrl.searchParams.set('sslmode','verify-full');
+  if(pgSsl) dbUrl.searchParams.set('sslmode','verify-full');
 
   const pool=new Pool({
     connectionString:dbUrl.toString(),
@@ -90,7 +91,7 @@ try {
     connectionTimeoutMillis:10000,
     statement_timeout:30000,
     application_name:'central-juridica-admin-credential-resync',
-    ssl:process.env.CJ_PG_SSL==='true'?{rejectUnauthorized:true}:undefined
+    ssl:pgSsl?{rejectUnauthorized:true}:undefined
   });
 
   const auditKeyring=loadAuditKeyring({production:true});
@@ -198,6 +199,7 @@ try {
       sessionsAfter:0,
       nonPasswordStatePreserved:true,
       mfaKeyMaterialTouched:false,
+      credentialAuthority:'canonical-service-reference',
       nonce
     }));
   } catch(error) {
