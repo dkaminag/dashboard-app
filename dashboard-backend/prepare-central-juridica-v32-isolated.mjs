@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 
-const primaryDatabaseName = 'central_juridica_v32_prod';
-const drDatabaseName = 'central_juridica_v32_dr';
+const primaryDatabaseName = 'central_juridica_v32_prod_r2';
+const drDatabaseName = 'central_juridica_v32_dr_r2';
 const require = createRequire(new URL('./runtime/package.json', import.meta.url));
 const { Pool } = require('pg');
 
