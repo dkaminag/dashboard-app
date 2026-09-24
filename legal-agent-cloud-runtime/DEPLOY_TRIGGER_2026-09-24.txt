@@ -1,5 +1,6 @@
-B&P Legal Agent Cloud privacy-hardened deployment trigger
-SAN source: f477d88a61ee0272b19c52a2928583a95c27e919
-Deployment snapshot: dashboard-app@6e9dce310115b3d9c384b0bb194d54d97d26c93d
+B&P Legal Agent Cloud post-bootstrap deployment trigger
+SAN source: 058c43b3d98c7294ed105c336045749f566ecca2
+Deployment snapshot merged: dashboard-app@d7ec8540bc33d1ab2cec3a4a90c5e2dd8c6cca5b
+Post-bootstrap gates: first admin activated; bootstrap token may be retired after deployment; provider model choices constrained
 Privacy gates: public web search opt-in; provider data-policy acknowledgment required
-Purpose: force Railway Git integration to build the refreshed legal-agent-cloud-runtime after the byte-parity snapshot update.
+Purpose: force Railway Git integration to build the current legal-agent-cloud-runtime after the validated post-bootstrap merge.
