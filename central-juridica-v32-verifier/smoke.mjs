@@ -34,6 +34,9 @@ let sessionStatus = null;
 let dashboardStatus = null;
 let logoutStatus = null;
 let staleStatus = null;
+let auditGatesStatus = null;
+let auditGatesProductionReady = null;
+let auditGatesDecision = null;
 
 if (!intakeOnly) {
   const login = await fetch(base + '/api/login', {
@@ -51,6 +54,12 @@ if (!intakeOnly) {
   sessionStatus = session.status;
   dashboardStatus = dashboard.status;
   if (session.status !== 200 || dashboard.status !== 200) throw new Error('QA_AUTH_FLOW_FAILED_' + session.status + '_' + dashboard.status);
+  const gates = await fetch(base + '/api/audit/gates', {headers:authHeaders});
+  const gatesBody = await readJson(gates);
+  auditGatesStatus = gates.status;
+  auditGatesProductionReady = gatesBody.productionReady ?? gatesBody.production_ready ?? null;
+  auditGatesDecision = gatesBody.decision ?? null;
+  if (gates.status !== 200) throw new Error('QA_AUDIT_GATES_FAILED_' + gates.status);
   const logout = await fetch(base + '/api/logout', {
     method:'POST',
     headers:{'content-type':'application/json','origin':base,cookie},
@@ -126,6 +135,9 @@ console.log(JSON.stringify({
   login:loginStatus,
   session:sessionStatus,
   dashboard:dashboardStatus,
+  auditGates:auditGatesStatus,
+  auditGatesProductionReady,
+  auditGatesDecision,
   logout:logoutStatus,
   staleSession:staleStatus,
   unauthIntake:unauthIntake.status,
