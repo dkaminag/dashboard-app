@@ -56,10 +56,23 @@ if (!intakeOnly) {
   if (login.status !== 200 || !cookie) throw new Error('QA_LOGIN_FAILED_' + login.status);
   const authHeaders = {cookie};
   const session = await fetch(base + '/api/session', {headers:authHeaders});
+  const sessionBody = await readJson(session);
   const dashboard = await fetch(base + '/api/dashboard', {headers:authHeaders});
   sessionStatus = session.status;
   dashboardStatus = dashboard.status;
   if (session.status !== 200 || dashboard.status !== 200) throw new Error('QA_AUTH_FLOW_FAILED_' + session.status + '_' + dashboard.status);
+
+  const qaGates = await fetch(base + '/api/audit/gates', {headers:authHeaders});
+  const qaGatesBody = await readJson(qaGates);
+  console.log(JSON.stringify({
+    event:'QA_AUDIT_GATE_DIAGNOSTIC',
+    qaRole:sessionBody?.user?.role ?? null,
+    status:qaGates.status,
+    productionReady:qaGatesBody.productionReady ?? qaGatesBody.production_ready ?? null,
+    decision:qaGatesBody.decision ?? null,
+    error:qaGatesBody.error ?? qaGatesBody.code ?? qaGatesBody.reason ?? null
+  }));
+
   const logout = await fetch(base + '/api/logout', {
     method:'POST',
     headers:{'content-type':'application/json','origin':base,cookie},
