@@ -18,7 +18,15 @@ const DATABASE_URL = process.env.LEGAL_DATABASE_URL || process.env.DATABASE_URL 
 const DATA_KEY_B64 = process.env.LEGAL_DATA_KEY_B64 || "";
 const BOOTSTRAP_TOKEN = process.env.LEGAL_BOOTSTRAP_TOKEN || "";
 const PUBLIC_BASE_URL = process.env.LEGAL_PUBLIC_BASE_URL || "";
-const DEFAULT_MODEL = process.env.LEGAL_MODEL || "gpt-5.6-sol";
+const OPENAI_MODELS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+const GROQ_MODELS = new Set(["openai/gpt-oss-120b", "openai/gpt-oss-20b"]);
+const PROVIDER_SET = new Set(["openai", "groq"]);
+const requestedProvider = String(process.env.LEGAL_PROVIDER || "groq").toLowerCase();
+const DEFAULT_PROVIDER = PROVIDER_SET.has(requestedProvider) ? requestedProvider : "groq";
+const requestedOpenAIModel = process.env.LEGAL_OPENAI_MODEL || process.env.LEGAL_MODEL || "gpt-5.6-sol";
+const OPENAI_DEFAULT_MODEL = OPENAI_MODELS.has(requestedOpenAIModel) ? requestedOpenAIModel : "gpt-5.6-sol";
+const requestedGroqModel = process.env.LEGAL_GROQ_MODEL || "openai/gpt-oss-120b";
+const GROQ_DEFAULT_MODEL = GROQ_MODELS.has(requestedGroqModel) ? requestedGroqModel : "openai/gpt-oss-120b";
 const REASONING_EFFORT = process.env.LEGAL_REASONING_EFFORT || "high";
 const PASSWORD_PEPPER = process.env.LEGAL_PASSWORD_PEPPER || "";
 const SESSION_TTL_HOURS = Math.min(Math.max(Number(process.env.LEGAL_SESSION_TTL_HOURS || 12), 1), 168);
@@ -30,7 +38,8 @@ const MAX_MESSAGE_CHARS = 80_000;
 const HISTORY_MESSAGE_LIMIT = 18;
 const COOKIE_NAME = "bp_legal_session";
 const USERNAME_RE = /^[a-z0-9._@+-]{3,120}$/;
-const MODEL_RE = /^gpt-[a-z0-9][a-z0-9._-]{1,63}$/;
+const TEXT_ATTACHMENT_MIME = new Set(["text/plain", "text/rtf", "application/rtf"]);
+const MAX_GROQ_TEXT_ATTACHMENT_CHARS = 220_000;
 const MODE_SET = new Set([
   "AUTOS",
   "PARECER",
@@ -380,16 +389,42 @@ async function setSetting(key, value, actorId) {
   );
 }
 
+function defaultModelFor(providerName) {
+  return providerName === "groq" ? GROQ_DEFAULT_MODEL : OPENAI_DEFAULT_MODEL;
+}
+
+function allowedModelFor(providerName, model) {
+  return providerName === "groq" ? GROQ_MODELS.has(model) : OPENAI_MODELS.has(model);
+}
+
+function validApiKeyFormat(providerName, apiKey) {
+  if (!apiKey) return true;
+  if (providerName === "groq") return apiKey.startsWith("gsk_") && apiKey.length >= 20;
+  return apiKey.startsWith("sk-") && apiKey.length >= 20;
+}
+
 async function getProviderConfig() {
-  const envKey = process.env.OPENAI_API_KEY || "";
-  const storedKey = envKey ? null : await getSetting("openai_api_key");
-  const model = (await getSetting("openai_model")) || DEFAULT_MODEL;
-  const policyAck = await getSetting("openai_data_policy_ack");
+  const storedProvider = String((await getSetting("ai_provider")) || "").toLowerCase();
+  const name = PROVIDER_SET.has(storedProvider) ? storedProvider : DEFAULT_PROVIDER;
+  const envKey = name === "groq"
+    ? (process.env.GROQ_API_KEY || "")
+    : (process.env.OPENAI_API_KEY || "");
+  const keySetting = `${name}_api_key`;
+  const modelSetting = `${name}_model`;
+  const policySetting = `${name}_data_policy_ack`;
+  const storedKey = envKey ? null : await getSetting(keySetting);
+  const fallbackModel = defaultModelFor(name);
+  const model = (await getSetting(modelSetting)) || fallbackModel;
+  const policyAck = await getSetting(policySetting);
   return {
+    name,
     apiKey: envKey || storedKey || "",
-    model: MODEL_RE.test(model) ? model : DEFAULT_MODEL,
+    model: allowedModelFor(name, model) ? model : fallbackModel,
     source: envKey ? "environment" : storedKey ? "encrypted_setting" : "none",
     dataPolicyAcknowledged: policyAck === "acknowledged",
+    endpoint: name === "groq"
+      ? "https://api.groq.com/openai/v1/responses"
+      : "https://api.openai.com/v1/responses",
   };
 }
 
@@ -610,7 +645,7 @@ Mandatory execution rules:
 `;
 }
 
-async function callOpenAI({ history, message, files, mode, webSearch }) {
+async function callAI({ history, message, files, mode, webSearch }) {
   const provider = await getProviderConfig();
   if (!provider.apiKey) {
     const error = new Error("AI_NOT_CONFIGURED");
@@ -637,28 +672,50 @@ async function callOpenAI({ history, message, files, mode, webSearch }) {
       content.push({
         type: "input_image",
         image_url: `data:${file.mime};base64,${file.data}`,
-        detail: "high",
+        detail: provider.name === "groq" ? "auto" : "high",
       });
-    } else {
-      content.push({
-        type: "input_file",
-        filename: file.name,
-        file_data: `data:${file.mime};base64,${file.data}`,
-      });
+      continue;
     }
+
+    if (provider.name === "groq") {
+      if (!TEXT_ATTACHMENT_MIME.has(file.mime)) {
+        const error = new Error("AI_PROVIDER_FILE_UNSUPPORTED");
+        error.statusCode = 400;
+        throw error;
+      }
+      const localText = Buffer.from(file.data, "base64").toString("utf8");
+      if (localText.length > MAX_GROQ_TEXT_ATTACHMENT_CHARS) {
+        const error = new Error("AI_PROVIDER_TEXT_FILE_TOO_LARGE");
+        error.statusCode = 400;
+        throw error;
+      }
+      content.push({
+        type: "input_text",
+        text: `\n[Anexo local: ${file.name}]\n${localText}\n[Fim do anexo]\n`,
+      });
+      continue;
+    }
+
+    content.push({
+      type: "input_file",
+      filename: file.name,
+      file_data: `data:${file.mime};base64,${file.data}`,
+    });
   }
   input.push({ role: "user", content });
 
   const body = {
     model: provider.model,
-    store: false,
     reasoning: { effort: REASONING_EFFORT },
     instructions: cloudDeveloperPrompt(mode, webSearch),
     input,
   };
-  if (webSearch) body.tools = [{ type: "web_search" }];
+  if (provider.name === "openai") body.store = false;
+  if (webSearch) {
+    body.tools = [{ type: provider.name === "groq" ? "browser_search" : "web_search" }];
+  }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch(provider.endpoint, {
     method: "POST",
     headers: {
       authorization: `Bearer ${provider.apiKey}`,
@@ -686,6 +743,7 @@ async function callOpenAI({ history, message, files, mode, webSearch }) {
   return {
     text: answer,
     citations: extractCitations(payload),
+    provider: provider.name,
     model: provider.model,
     responseId: payload.id || null,
     usage: payload.usage
@@ -697,7 +755,6 @@ async function callOpenAI({ history, message, files, mode, webSearch }) {
       : null,
   };
 }
-
 async function serveStatic(req, res, pathname) {
   const routes = {
     "/": ["index.html", "text/html; charset=utf-8"],
@@ -747,7 +804,7 @@ async function route(req, res) {
     const users = await getUserCount();
     const provider = users > 0 && user
       ? await getProviderConfig()
-      : { apiKey: "", model: DEFAULT_MODEL, source: "none", dataPolicyAcknowledged: false };
+      : { name: DEFAULT_PROVIDER, apiKey: "", model: defaultModelFor(DEFAULT_PROVIDER), source: "none", dataPolicyAcknowledged: false };
     json(res, 200, {
       setupRequired: users === 0,
       authenticated: Boolean(user),
@@ -755,6 +812,7 @@ async function route(req, res) {
       aiConfigured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
       apiKeyConfigured: Boolean(provider.apiKey),
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      provider: provider.name,
       model: provider.model,
       providerSource: provider.source,
       modes: [...MODE_SET],
@@ -964,7 +1022,7 @@ async function route(req, res) {
 
     const started = Date.now();
     try {
-      const answer = await callOpenAI({
+      const answer = await callAI({
         history,
         message,
         files: normalizedFiles.files,
@@ -974,6 +1032,7 @@ async function route(req, res) {
       const assistantMessageId = await saveMessage(thread.id, "assistant", answer.text, {
         mode,
         webSearch,
+        provider: answer.provider,
         model: answer.model,
         citations: answer.citations,
         usage: answer.usage,
@@ -984,6 +1043,7 @@ async function route(req, res) {
         webSearch,
         fileCount: normalizedFiles.files.length,
         totalFileBytes: normalizedFiles.totalBytes,
+        provider: answer.provider,
         model: answer.model,
         providerResponseRef: answer.responseId ? sha256(answer.responseId).slice(0, 16) : null,
         latencyMs: Date.now() - started,
@@ -994,6 +1054,7 @@ async function route(req, res) {
         assistantMessageId,
         answer: answer.text,
         citations: answer.citations,
+        provider: answer.provider,
         model: answer.model,
         usage: answer.usage,
       });
@@ -1115,9 +1176,14 @@ async function route(req, res) {
       configured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
       apiKeyConfigured: Boolean(provider.apiKey),
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      provider: provider.name,
       model: provider.model,
       source: provider.source,
       reasoningEffort: REASONING_EFFORT,
+      supportedProviders: {
+        openai: [...OPENAI_MODELS],
+        groq: [...GROQ_MODELS],
+      },
     });
     return;
   }
@@ -1125,28 +1191,36 @@ async function route(req, res) {
   if (pathname === "/api/admin/provider" && method === "POST") {
     if (!requireAdmin(user, res)) return;
     const body = await readJson(req);
+    const providerName = String(body.provider || DEFAULT_PROVIDER).trim().toLowerCase();
+    if (!PROVIDER_SET.has(providerName)) {
+      await audit(user.id, "provider-config-denied", { reason: "INVALID_PROVIDER" });
+      json(res, 400, { error: "INVALID_PROVIDER" });
+      return;
+    }
     const apiKey = String(body.apiKey || "").trim();
-    const model = String(body.model || DEFAULT_MODEL).trim();
-    if (apiKey && (!apiKey.startsWith("sk-") || apiKey.length < 20)) {
-      await audit(user.id, "provider-config-denied", { reason: "INVALID_API_KEY_FORMAT" });
+    const model = String(body.model || defaultModelFor(providerName)).trim();
+    if (!validApiKeyFormat(providerName, apiKey)) {
+      await audit(user.id, "provider-config-denied", { reason: "INVALID_API_KEY_FORMAT", provider: providerName });
       json(res, 400, { error: "INVALID_API_KEY_FORMAT" });
       return;
     }
-    if (!MODEL_RE.test(model)) {
-      await audit(user.id, "provider-config-denied", { reason: "INVALID_MODEL" });
+    if (!allowedModelFor(providerName, model)) {
+      await audit(user.id, "provider-config-denied", { reason: "INVALID_MODEL", provider: providerName });
       json(res, 400, { error: "INVALID_MODEL" });
       return;
     }
     if (body.dataPolicyAcknowledged !== true) {
-      await audit(user.id, "provider-config-denied", { reason: "DATA_POLICY_ACK_REQUIRED" });
+      await audit(user.id, "provider-config-denied", { reason: "DATA_POLICY_ACK_REQUIRED", provider: providerName });
       json(res, 400, { error: "DATA_POLICY_ACK_REQUIRED" });
       return;
     }
-    if (apiKey) await setSetting("openai_api_key", apiKey, user.id);
-    await setSetting("openai_model", model, user.id);
-    await setSetting("openai_data_policy_ack", "acknowledged", user.id);
+    await setSetting("ai_provider", providerName, user.id);
+    if (apiKey) await setSetting(`${providerName}_api_key`, apiKey, user.id);
+    await setSetting(`${providerName}_model`, model, user.id);
+    await setSetting(`${providerName}_data_policy_ack`, "acknowledged", user.id);
     const provider = await getProviderConfig();
     await audit(user.id, "provider-config-updated", {
+      provider: provider.name,
       model: provider.model,
       source: provider.source,
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
@@ -1155,12 +1229,12 @@ async function route(req, res) {
       configured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
       apiKeyConfigured: Boolean(provider.apiKey),
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      provider: provider.name,
       model: provider.model,
       source: provider.source,
     });
     return;
   }
-
   if (await serveStatic(req, res, pathname)) return;
 
   json(res, 404, { error: "NOT_FOUND" });
