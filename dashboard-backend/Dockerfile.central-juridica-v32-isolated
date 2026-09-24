@@ -8,8 +8,13 @@ RUN mkdir -p /tmp/cj-v32-src && tar -xzf /tmp/cj-v32.tgz -C /tmp/cj-v32-src --st
  && node -e "const p=require('/app/candidate-package/package.json'); if(p.version!=='3.2.0-preview') throw new Error('V32_RELEASE_VERSION_MISMATCH')" \
  && cd /app/candidate-package && npm run build
 COPY patch-central-juridica-v32-runtime-least-privilege.mjs /app/candidate-package/patch-runtime-least-privilege.mjs
+COPY patch-central-juridica-v32-audit-keyring-compat.mjs /app/candidate-package/patch-audit-keyring-compat.mjs
+COPY test-central-juridica-v32-audit-keyring-compat.mjs /app/candidate-package/test-audit-keyring-compat.mjs
 RUN cd /app/candidate-package && node patch-runtime-least-privilege.mjs \
+ && node patch-audit-keyring-compat.mjs \
  && node --check runtime/src/server.mjs \
+ && node --check runtime/src/audit-integrity.mjs \
+ && node test-audit-keyring-compat.mjs \
  && node --check final-drill.mjs
 COPY prepare-central-juridica-v32-isolated.mjs /app/candidate-package/prepare-prod-schema.mjs
 COPY start-central-juridica-v32-isolated.mjs /app/candidate-package/start-isolated.mjs
