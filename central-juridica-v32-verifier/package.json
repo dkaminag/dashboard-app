@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "node --check smoke.mjs && node --check server.mjs",
+    "build": "node --check smoke.mjs && node --check server.mjs && node --check audit-keyring-canary.mjs",
     "start": "node server.mjs"
   }
 }
