@@ -3,41 +3,37 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BASE = '15f88f533c6c386f274da79b435418f64a27fc3e';
-const SOURCE = '133f5bc47aacd03b4e2233e54c9d2e8434f72554';
-const EXPECTED = [
-  'central-juridica-railway-v3.2.0/final-drill.mjs',
-].sort();
+const APPROVED_PATH_SOURCES = [
+  {
+    path: 'central-juridica-railway-v3.2.0',
+    source: '4f17a25183ac3f54a01626457e9d959d688c7828',
+  },
+  {
+    path: 'dashboard-backend/Dockerfile.central-juridica-v32-preview',
+    source: '969674b99e773adebe54e7a9a316ce6a3e0ad865',
+  },
+  {
+    path: 'central-juridica-v32-verifier',
+    source: '0e9242c7189513697f4bc4d31c99c37afde6f6fa',
+  },
+];
 
 function git(args) {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
 
-if (git(['merge-base', BASE, SOURCE]) !== BASE) {
-  throw new Error('CJ_V32_BASE_LINEAGE_MISMATCH');
+for (const approved of APPROVED_PATH_SOURCES) {
+  if (git(['merge-base', approved.source, 'HEAD']) !== approved.source) {
+    throw new Error('CJ_V32_APPROVED_SOURCE_NOT_ANCESTOR:' + approved.path);
+  }
+  execFileSync('git', [
+    'diff',
+    '--exit-code',
+    approved.source,
+    '--',
+    approved.path,
+  ], { stdio: 'inherit' });
 }
-if (git(['rev-list', '--count', BASE + '..' + SOURCE]) !== '1') {
-  throw new Error('CJ_V32_SOURCE_COMMIT_COUNT_MISMATCH');
-}
-
-const changed = git(['diff', '--name-only', BASE + '..' + SOURCE])
-  .split('\n')
-  .filter(Boolean)
-  .sort();
-
-if (JSON.stringify(changed) !== JSON.stringify(EXPECTED)) {
-  throw new Error('CJ_V32_SOURCE_FILE_DELTA_MISMATCH:' + JSON.stringify(changed));
-}
-
-execFileSync('git', [
-  'diff',
-  '--exit-code',
-  SOURCE,
-  '--',
-  'central-juridica-railway-v3.2.0',
-  'dashboard-backend/Dockerfile.central-juridica-v32-preview',
-  'central-juridica-v32-verifier',
-], { stdio: 'inherit' });
 
 const packageRoot = path.resolve('central-juridica-railway-v3.2.0');
 const overlayNames = fs.readdirSync(packageRoot)
@@ -66,7 +62,7 @@ const dockerfile = fs.readFileSync(
   path.resolve('dashboard-backend/Dockerfile.central-juridica-v32-preview'),
   'utf8',
 );
-if (!dockerfile.includes('534b2a2e5c87125f9c77b27a915463d4daeaa229')) {
+if (!dockerfile.includes('d507a9955be07ef710d410b5263686ac75caeeff')) {
   throw new Error('IMMUTABLE_DOCKER_SOURCE_PIN_MISSING');
 }
 if (/tar\.gz\/(main|master|HEAD)(?:['"\s]|$)/.test(dockerfile)) {
@@ -100,8 +96,10 @@ for (const required of [
   'V32_UNAUTH_NOT_BLOCKED_',
   'V32_FIRST_INGEST_FAILED_',
   'V32_REPLAY_FAILED_',
-  'CENTRAL_JURIDICA_V32_INTAKE_E2E',
-  'replayed: second.body.replayed === true',
+  'CENTRAL_JURIDICA_V32_COMBINED_SMOKE',
+  'replayed:true',
+  'CJ_ADMIN_CREDENTIAL_RESYNC',
+  'ADMIN_AUDIT_GATE_CONFIG_MISSING',
 ]) {
   if (!smoke.includes(required)) throw new Error('VERIFIER_FAIL_CLOSED_INVARIANT_MISSING:' + required);
 }
@@ -109,10 +107,7 @@ for (const required of [
 console.log(JSON.stringify({
   event: 'CENTRAL_JURIDICA_V32_RUNTIME_SOURCE_CERTIFICATION',
   passed: true,
-  base: BASE,
-  source: SOURCE,
-  commits: 1,
-  changedFiles: changed,
+  approvedPathSources: APPROVED_PATH_SOURCES,
   overlayParts: overlayNames.length,
   overlayTextSha256: overlaySha,
   productionMutated: false,
