@@ -200,3 +200,5 @@ console.log(JSON.stringify({
 }));
 
 // R2 final fresh-source UI smoke: 2026-09-24
+
+// verifier source refresh: controlled admin resync r3
