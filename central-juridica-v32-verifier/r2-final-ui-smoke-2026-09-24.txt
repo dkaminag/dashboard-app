@@ -1,0 +1,4 @@
+Central Juridica v3.2 R2 final UI smoke trigger
+Date: 2026-09-24
+Purpose: force verifier fresh source after UI HTML assertion was added.
+No secrets.
