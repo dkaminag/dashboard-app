@@ -134,3 +134,5 @@ console.log(JSON.stringify({
   replayed:true,
   syntheticIdentityUnique:true
 }));
+
+// R2 final fresh-source UI smoke: 2026-09-24
