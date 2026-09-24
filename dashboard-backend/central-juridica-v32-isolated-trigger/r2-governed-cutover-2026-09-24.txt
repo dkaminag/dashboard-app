@@ -1,0 +1,5 @@
+Central Juridica v3.2 governed R2 cutover trigger
+Date: 2026-09-24
+Purpose: force a fresh Railway source snapshot after R2 primary/DR database isolation and governed keyring bootstrap.
+Rollback: preserve existing central_juridica_v32_prod and central_juridica_v32_dr databases and previous green deployment.
+Secrets: no cryptographic material is stored in this file.
