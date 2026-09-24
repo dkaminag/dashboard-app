@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 
 const source = await fs.readFile(new URL('./sync-admin-user.mjs', import.meta.url), 'utf8');
+const core = await fs.readFile(new URL('./admin-sync-core.mjs', import.meta.url), 'utf8');
 const dockerfile = await fs.readFile(new URL('./Dockerfile', import.meta.url), 'utf8').catch(() => '');
 
 assert.match(source, /CJ_ADMIN_SYNC_MODE \|\| 'dry-run'/);
 assert.match(source, /ADMIN_SYNC_EXPLICIT_APPROVAL_MISSING/);
 assert.match(source, /central_juridica_v32_prod_r3/);
-assert.match(source, /ADMIN_SYNC_USER_NOT_FOUND/);
-assert.match(source, /ADMIN_SYNC_ROLE_MISMATCH/);
+assert.match(core, /ADMIN_SYNC_USER_NOT_FOUND/);
+assert.match(core, /ADMIN_SYNC_ROLE_MISMATCH/);
 assert.match(source, /DELETE FROM central_juridica_sessions WHERE user_id=\$1/);
 assert.match(source, /ADMIN_CREDENTIAL_SYNCED/);
 assert.match(source, /immutableFingerprint/);
