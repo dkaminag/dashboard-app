@@ -86,8 +86,8 @@
             </select>
           </label>
           <label class="toggle">
-            <input id="web-search" type="checkbox" checked>
-            <span>Pesquisar fontes atuais</span>
+            <input id="web-search" type="checkbox">
+            <span>Pesquisar fontes públicas atuais (opt-in)</span>
           </label>
         </div>
       </header>
@@ -148,6 +148,10 @@
           </label>
           <label>OpenAI API Key
             <input id="provider-key" type="password" placeholder="sk-…">
+          </label>
+          <label class="policy-ack">
+            <input id="provider-policy-ack" type="checkbox" required>
+            <span>Confirmo que o escritório autorizou o processamento pela OpenAI API e revisou a política de retenção de dados aplicável.</span>
           </label>
           <button type="submit" class="primary">Salvar configuração</button>
         </form>
