@@ -182,3 +182,48 @@ Verifier pre-deploy command was confirmed restored after the successful cleanup 
 - one-shot left enabled: NO.
 
 The next human administrator login must continue to use the existing MFA second factor.
+
+
+## Post-resync canonical reload and cleanup verification
+
+A same-source canonical service redeploy was performed after the controlled transaction to eliminate any possibility that a long-lived process retained stale in-memory authentication state.
+
+Canonical reload deployment:
+
+- service: `central-juridica-v3-2-prod`;
+- deployment: `68914108-71b3-4c3b-aad9-86f17a92ea5f`;
+- status: **SUCCESS**;
+- source/config release remained the existing R3 runtime;
+- primary database: `central_juridica_v32_prod_r3`;
+- DR database: `central_juridica_v32_dr_r3`;
+- least-privilege runtime role verification: PASS on both databases;
+- `FINAL_KEY_BACKUP_RESTORE_VERIFIED`: PASS;
+- source/target separation: PASS;
+- sessions restored by DR: 0;
+- `isolated-prod-predeploy-passed`: PASS;
+- server started as `3.2.0-preview`;
+- `/api/ready`: 200.
+
+The subsequent password-only admin smoke continued to return 401. This does not invalidate the credential resynchronization: the controlled transaction already proved the canonical provider password against the persisted hash, and the administrator's existing MFA state was deliberately preserved. Password-only automated admin verification is therefore not a valid replacement for the protected human MFA challenge.
+
+Final verifier cleanup was re-applied explicitly:
+
+- `CJ_ADMIN_CREDENTIAL_RESYNC=false`;
+- `CJ_QA_SMOKE_MODE=intake-only`;
+- pre-deploy chain restored to `audit-keyring-canary.mjs → smoke.mjs`;
+- cleanup deployment: `0e87c8e0-7fdf-4074-834c-53f643b2cdfa`;
+- cleanup status: **SUCCESS**;
+- audit-keyring canary: PASS;
+- UI/health/readiness: 200/200/200;
+- unauthenticated dashboard/intake: 401/401;
+- first intake: 201;
+- replay: 200 with `replayed=true`.
+
+Final maintenance classification after reload:
+
+- controlled credential resync: **PASS**;
+- canonical runtime reload: **PASS**;
+- final verifier cleanup: **PASS**;
+- one-shot resync enabled: **NO**;
+- MFA key material modified: **NO**;
+- remaining protected action: human administrator MFA-authenticated login/challenge only.
