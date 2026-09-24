@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 
-const primaryDatabaseName = 'central_juridica_v32_prod_r2';
-const drDatabaseName = 'central_juridica_v32_dr_r2';
+const primaryDatabaseName = 'central_juridica_v32_prod_r3';
+const drDatabaseName = 'central_juridica_v32_dr_r3';
 const require = createRequire(new URL('./runtime/package.json', import.meta.url));
 const { Pool } = require('pg');
 
@@ -253,6 +253,10 @@ async function run(script) {
   });
 }
 
-await run('sync-qa-user.mjs');
+if (String(process.env.CJ_ADMIN_FIRST_BOOTSTRAP || '').trim() !== 'true') {
+  await run('sync-qa-user.mjs');
+} else {
+  console.log(JSON.stringify({event:'qa-sync-deferred-for-admin-bootstrap'}));
+}
 await run('final-drill.mjs');
 console.log(JSON.stringify({event:'isolated-prod-predeploy-passed',primaryDatabase:primaryDatabaseName,drDatabase:drDatabaseName,version:'3.2.0-preview'}));
