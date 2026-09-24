@@ -1,0 +1,86 @@
+name: B&P Legal Agent Deployment Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "legal-agent-cloud-runtime/**"
+      - ".github/workflows/legal-agent-cloud-deployment-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legal-agent-cloud-deployment-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, Windows, X64, san-ci]
+    timeout-minutes: 10
+    steps:
+      - name: Verify public deployment boundary
+        shell: pwsh
+        env:
+          LEGAL_AGENT_BASE_URL: https://central-juridica-v3-1-1-production.up.railway.app
+        run: |
+          $ErrorActionPreference = "Stop"
+          $base = $env:LEGAL_AGENT_BASE_URL.TrimEnd("/")
+
+          function Get-WithRetry([string]$path) {
+            $last = $null
+            for ($i = 1; $i -le 12; $i++) {
+              try {
+                $response = Invoke-WebRequest -Uri ($base + $path) -Method GET -UseBasicParsing -TimeoutSec 15 -SkipHttpErrorCheck
+                if ($response.StatusCode -notin @(502,503,504)) {
+                  return $response
+                }
+                $last = "HTTP $($response.StatusCode)"
+              } catch {
+                $last = $_.Exception.Message
+              }
+              Start-Sleep -Seconds 5
+            }
+            throw "Request failed for $path after retries: $last"
+          }
+
+          $health = Get-WithRetry "/health"
+          if ($health.StatusCode -ne 200) { throw "HEALTH_HTTP_$($health.StatusCode)" }
+          $healthBody = $health.Content | ConvertFrom-Json
+          if ($healthBody.ok -ne $true) { throw "HEALTH_NOT_OK" }
+          if ($healthBody.ready -ne $true) { throw "HEALTH_NOT_READY" }
+          if ($healthBody.service -ne "bp-legal-agent-cloud") { throw "HEALTH_SERVICE_MISMATCH" }
+
+          $status = Get-WithRetry "/api/status"
+          if ($status.StatusCode -ne 200) { throw "STATUS_HTTP_$($status.StatusCode)" }
+          $statusBody = $status.Content | ConvertFrom-Json
+          if ($statusBody.authenticated -ne $false) { throw "STATUS_ANON_AUTHENTICATED" }
+          if ($null -eq $statusBody.PSObject.Properties["apiKeyConfigured"]) { throw "PRIVACY_API_KEY_FIELD_MISSING" }
+          if ($null -eq $statusBody.PSObject.Properties["dataPolicyAcknowledged"]) { throw "PRIVACY_ACK_FIELD_MISSING" }
+          if ($statusBody.apiKeyConfigured -ne $false) { throw "ANON_PROVIDER_METADATA_LEAK" }
+          if ($statusBody.dataPolicyAcknowledged -ne $false) { throw "ANON_POLICY_METADATA_LEAK" }
+
+          $root = Get-WithRetry "/"
+          if ($root.StatusCode -ne 200) { throw "ROOT_HTTP_$($root.StatusCode)" }
+          if ($root.Content -notmatch "Pesquisar fontes públicas atuais \(opt-in\)") { throw "PUBLIC_SEARCH_OPT_IN_UI_MISSING" }
+          if ($root.Content -notmatch 'id="provider-policy-ack"') { throw "PROVIDER_POLICY_ACK_UI_MISSING" }
+
+          $protected = Get-WithRetry "/api/threads"
+          if ($protected.StatusCode -ne 401) { throw "PROTECTED_ROUTE_EXPECTED_401_GOT_$($protected.StatusCode)" }
+          $protectedBody = $protected.Content | ConvertFrom-Json
+          if ($protectedBody.error -ne "AUTH_REQUIRED") { throw "PROTECTED_ROUTE_ERROR_MISMATCH" }
+
+          [ordered]@{
+            status = "PASS"
+            base_url = $base
+            health = [int]$health.StatusCode
+            ready = [bool]$healthBody.ready
+            setup_required = [bool]$statusBody.setupRequired
+            authenticated = [bool]$statusBody.authenticated
+            privacy_fields_present = $true
+            public_search_default = "OPT_IN"
+            protected_route = [int]$protected.StatusCode
+            secrets_observed = $false
+            real_matter_data_used = $false
+          } | ConvertTo-Json -Compress
