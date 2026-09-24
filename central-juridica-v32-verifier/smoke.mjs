@@ -39,6 +39,10 @@ let staleStatus = null;
 let auditGatesStatus = null;
 let auditGatesProductionReady = null;
 let auditGatesDecision = null;
+let adminSessionStatus = null;
+let adminMfaEnabled = null;
+let adminMfaRequired = null;
+let adminGateError = null;
 
 if (!intakeOnly) {
   const login = await fetch(base + '/api/login', {
@@ -75,12 +79,21 @@ if (!intakeOnly) {
   const adminSetCookie = adminLogin.headers.get('set-cookie') || '';
   const adminCookie = adminSetCookie.split(';')[0];
   if (adminLogin.status !== 200 || !adminCookie) throw new Error('ADMIN_LOGIN_FAILED_' + adminLogin.status);
+  const adminSession = await fetch(base + '/api/session', {headers:{cookie:adminCookie}});
+  const adminSessionBody = await readJson(adminSession);
+  adminSessionStatus = adminSession.status;
+  adminMfaEnabled = adminSessionBody?.user?.mfaEnabled ?? adminSessionBody?.mfaEnabled ?? null;
+  adminMfaRequired = adminSessionBody?.mfaRequired ?? adminSessionBody?.user?.mfaRequired ?? null;
   const gates = await fetch(base + '/api/audit/gates', {headers:{cookie:adminCookie}});
   const gatesBody = await readJson(gates);
   auditGatesStatus = gates.status;
   auditGatesProductionReady = gatesBody.productionReady ?? gatesBody.production_ready ?? null;
   auditGatesDecision = gatesBody.decision ?? null;
-  if (gates.status !== 200) throw new Error('ADMIN_AUDIT_GATES_FAILED_' + gates.status);
+  adminGateError = gatesBody.error ?? gatesBody.code ?? gatesBody.reason ?? null;
+  if (gates.status !== 200) {
+    console.log(JSON.stringify({event:'ADMIN_AUDIT_GATE_DIAGNOSTIC',adminSessionStatus,adminMfaEnabled,adminMfaRequired,auditGatesStatus:gates.status,adminGateError}));
+    throw new Error('ADMIN_AUDIT_GATES_FAILED_' + gates.status + '_' + String(adminGateError || 'unknown'));
+  }
   await fetch(base + '/api/logout', {
     method:'POST', headers:{'content-type':'application/json','origin':base,cookie:adminCookie}, body:'{}'
   });
@@ -153,6 +166,10 @@ console.log(JSON.stringify({
   auditGates:auditGatesStatus,
   auditGatesProductionReady,
   auditGatesDecision,
+  adminSessionStatus,
+  adminMfaEnabled,
+  adminMfaRequired,
+  adminGateError,
   logout:logoutStatus,
   staleSession:staleStatus,
   unauthIntake:unauthIntake.status,
