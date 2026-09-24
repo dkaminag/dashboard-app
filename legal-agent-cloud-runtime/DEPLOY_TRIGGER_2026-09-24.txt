@@ -1,0 +1,4 @@
+B&P Legal Agent Cloud deployment trigger
+SAN source: 7a0694c8d9f72b49d8e64842af53140a8d955593
+Deployment snapshot: dashboard-app@542fdc7663803daee9d31c7ec4c1173dc5ef449d
+Purpose: force Railway Git integration to build the current legal-agent-cloud-runtime after service root/watch reconfiguration.
