@@ -1,5 +1,5 @@
-const primaryDatabaseName = 'central_juridica_v32_prod_r2';
-const drDatabaseName = 'central_juridica_v32_dr_r2';
+const primaryDatabaseName = 'central_juridica_v32_prod_r3';
+const drDatabaseName = 'central_juridica_v32_dr_r3';
 const runtimeRole = 'central_juridica_v32_runtime';
 
 function runtimeUrl(raw, envName, databaseName) {
