@@ -31,8 +31,11 @@ const errorMessages = {
   INVALID_FILE: "Um dos anexos possui formato não permitido.",
   FILE_TOO_LARGE: "Um dos anexos ultrapassa o limite permitido.",
   FILES_TOO_LARGE: "O conjunto de anexos ultrapassa o limite permitido.",
-  INVALID_API_KEY_FORMAT: "Chave inválida. Use uma OpenAI API key iniciada por sk- ou sk-proj-; a assinatura do ChatGPT não substitui a API.",
-  INVALID_MODEL: "Modelo inválido.",
+  INVALID_API_KEY_FORMAT: "Chave inválida para o provedor selecionado. OpenAI usa chaves sk- e Groq usa chaves gsk_.",
+  INVALID_PROVIDER: "Provedor de IA inválido.",
+  INVALID_MODEL: "Modelo inválido para o provedor selecionado.",
+  AI_PROVIDER_FILE_UNSUPPORTED: "No modo Groq, envie imagens ou arquivos TXT/RTF. PDF/DOC/DOCX ainda exigem OpenAI ou conversão local antes do envio.",
+  AI_PROVIDER_TEXT_FILE_TOO_LARGE: "O arquivo de texto é grande demais para envio seguro pelo provedor selecionado.",
   CURRENT_PASSWORD_INVALID: "A senha atual está incorreta.",
   CANNOT_DISABLE_SELF: "Você não pode desativar sua própria conta.",
 };
@@ -92,7 +95,8 @@ function setAiStatus() {
     el.textContent = "IA não configurada";
     el.className = "status-pill warn";
   } else {
-    el.textContent = `IA ativa · ${state.status.model}`;
+    const providerLabel = state.status.provider === "groq" ? "Groq" : "OpenAI";
+    el.textContent = `IA ativa · ${providerLabel} · ${state.status.model}`;
     el.className = "status-pill ok";
   }
 }
@@ -457,23 +461,68 @@ $("password-form").addEventListener("submit", async (event) => {
   }
 });
 
+const providerModels = {
+  openai: [
+    ["gpt-5.6-sol", "GPT-5.6 Sol — máxima qualidade jurídica"],
+    ["gpt-5.6-terra", "GPT-5.6 Terra — equilíbrio custo/qualidade"],
+    ["gpt-5.6-luna", "GPT-5.6 Luna — baixo custo/alto volume"],
+  ],
+  groq: [
+    ["openai/gpt-oss-120b", "GPT-OSS 120B — recomendado"],
+    ["openai/gpt-oss-20b", "GPT-OSS 20B — mais leve"],
+  ],
+};
+
+function renderProviderModels(providerName, selectedModel = "") {
+  const select = $("provider-model");
+  select.textContent = "";
+  for (const [value, label] of providerModels[providerName] || []) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    if (value === selectedModel) option.selected = true;
+    select.append(option);
+  }
+  if (!select.value && select.options.length) select.selectedIndex = 0;
+}
+
+function syncProviderHelp(providerName) {
+  const groq = providerName === "groq";
+  $("provider-key").placeholder = groq ? "gsk_…" : "sk-proj-…";
+  $("provider-key-help").textContent = groq
+    ? "Crie/gerencie gratuitamente em console.groq.com/keys."
+    : "Crie/gerencie em platform.openai.com/api-keys.";
+  $("provider-file-help").textContent = groq
+    ? "Groq: imagens e TXT/RTF. PDF/DOC/DOCX ficam bloqueados até adicionarmos extração local."
+    : "OpenAI: mantém suporte aos formatos de documentos aceitos pelo portal.";
+}
+
 async function loadAdmin() {
   if (state.user?.role !== "admin") return;
   const [provider, users] = await Promise.all([
     request("/api/admin/provider"),
     request("/api/admin/users"),
   ]);
-  $("provider-model").value = provider.model || "gpt-5.6-sol";
+  const providerName = provider.provider || "groq";
+  $("provider-name").value = providerName;
+  renderProviderModels(providerName, provider.model);
+  syncProviderHelp(providerName);
   $("provider-key").value = "";
   $("provider-policy-ack").checked = provider.dataPolicyAcknowledged === true;
   $("provider-state").textContent = provider.configured
-    ? `Configurado · ${provider.source} · ${provider.model} · política confirmada`
+    ? `Configurado · ${providerName === "groq" ? "Groq" : "OpenAI"} · ${provider.source} · ${provider.model} · política confirmada`
     : provider.apiKeyConfigured
       ? "Chave cadastrada; falta confirmar a política de dados."
       : "Ainda não configurado.";
   renderUsers(users.users || []);
 }
 
+$("provider-name").addEventListener("change", () => {
+  const providerName = $("provider-name").value;
+  renderProviderModels(providerName);
+  syncProviderHelp(providerName);
+  $("provider-policy-ack").checked = false;
+});
 function renderUsers(users) {
   const list = $("user-list");
   list.textContent = "";
@@ -539,6 +588,7 @@ $("provider-form").addEventListener("submit", async (event) => {
     await request("/api/admin/provider", {
       method: "POST",
       body: {
+        provider: $("provider-name").value,
         apiKey: $("provider-key").value.trim(),
         model: $("provider-model").value.trim(),
         dataPolicyAcknowledged: $("provider-policy-ack").checked,
