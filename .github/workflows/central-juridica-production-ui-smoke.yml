@@ -25,7 +25,7 @@ jobs:
           test "$(wc -c < /tmp/ui.html)" -gt 100
 
           curl --fail --silent --show-error "$BASE_URL/api/health" > /tmp/health.json
-          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('/tmp/health.json'));if(j.ok!==true||j.version!=='3.2.0-preview')process.exit(1);console.log(JSON.stringify({event:'PUBLIC_UI_HEALTH_PASS',version:j.version}))"
+          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('/tmp/health.json'));if(j.ok!==true||j.version!=='3.2.0-preview')process.exit(1);const i=j.integrations||{};console.log(JSON.stringify({event:'PUBLIC_UI_HEALTH_PASS',version:j.version,backend:j.backend??null,documentsEnabled:j.documentsEnabled??null,googleConfigured:i.googleConfigured??null,googleEnabled:i.googleEnabled??null,openaiConfigured:i.openaiConfigured??null,aiEnabled:i.aiEnabled??null,sanEnabled:i.sanEnabled??null}))"
 
           ready_status="$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' "$BASE_URL/api/ready")"
           test "$ready_status" = "200"
