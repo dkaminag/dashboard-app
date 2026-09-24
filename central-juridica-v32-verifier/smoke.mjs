@@ -91,8 +91,10 @@ if (!intakeOnly) {
   auditGatesDecision = gatesBody.decision ?? null;
   adminGateError = gatesBody.error ?? gatesBody.code ?? gatesBody.reason ?? null;
   if (gates.status !== 200) {
-    console.log(JSON.stringify({event:'ADMIN_AUDIT_GATE_DIAGNOSTIC',adminSessionStatus,adminMfaEnabled,adminMfaRequired,auditGatesStatus:gates.status,adminGateError}));
-    throw new Error('ADMIN_AUDIT_GATES_FAILED_' + gates.status + '_' + String(adminGateError || 'unknown'));
+    const expectedMfaEnrollment = gates.status === 403 && String(adminGateError || '').includes('MFA obrigatória');
+    console.log(JSON.stringify({event:'ADMIN_AUDIT_GATE_DIAGNOSTIC',adminSessionStatus,adminMfaEnabled,adminMfaRequired,auditGatesStatus:gates.status,adminGateError,expectedMfaEnrollment}));
+    if (!expectedMfaEnrollment) throw new Error('ADMIN_AUDIT_GATES_FAILED_' + gates.status + '_' + String(adminGateError || 'unknown'));
+    auditGatesDecision = 'MFA_ENROLLMENT_REQUIRED_BEFORE_ADMIN_AUDIT';
   }
   await fetch(base + '/api/logout', {
     method:'POST', headers:{'content-type':'application/json','origin':base,cookie:adminCookie}, body:'{}'
