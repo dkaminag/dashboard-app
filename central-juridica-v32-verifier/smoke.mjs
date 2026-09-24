@@ -4,6 +4,8 @@ const base = String(process.env.CJ_PREVIEW_BASE_URL || '').trim().replace(/\/+$/
 const token = String(process.env.CJ_INTAKE_TOKEN || '').trim();
 const qaUser = String(process.env.CJ_QA_USER || '').trim();
 const qaPassword = String(process.env.CJ_QA_PASSWORD || '');
+const adminUser = String(process.env.CJ_ADMIN_USER || '').trim();
+const adminPassword = String(process.env.CJ_ADMIN_PASSWORD || '');
 const intakeOnly = String(process.env.CJ_QA_SMOKE_MODE || '').trim() === 'intake-only';
 if (!base || token.length < 32) throw new Error('V32_E2E_CONFIG_MISSING');
 if (!intakeOnly && (!qaUser || !qaPassword)) throw new Error('QA_SMOKE_CONFIG_MISSING');
@@ -54,12 +56,6 @@ if (!intakeOnly) {
   sessionStatus = session.status;
   dashboardStatus = dashboard.status;
   if (session.status !== 200 || dashboard.status !== 200) throw new Error('QA_AUTH_FLOW_FAILED_' + session.status + '_' + dashboard.status);
-  const gates = await fetch(base + '/api/audit/gates', {headers:authHeaders});
-  const gatesBody = await readJson(gates);
-  auditGatesStatus = gates.status;
-  auditGatesProductionReady = gatesBody.productionReady ?? gatesBody.production_ready ?? null;
-  auditGatesDecision = gatesBody.decision ?? null;
-  if (gates.status !== 200) throw new Error('QA_AUDIT_GATES_FAILED_' + gates.status);
   const logout = await fetch(base + '/api/logout', {
     method:'POST',
     headers:{'content-type':'application/json','origin':base,cookie},
@@ -69,6 +65,25 @@ if (!intakeOnly) {
   logoutStatus = logout.status;
   staleStatus = stale.status;
   if (logout.status !== 200 || stale.status !== 401) throw new Error('QA_LOGOUT_FLOW_FAILED_' + logout.status + '_' + stale.status);
+
+  if (!adminUser || !adminPassword) throw new Error('ADMIN_AUDIT_GATE_CONFIG_MISSING');
+  const adminLogin = await fetch(base + '/api/login', {
+    method:'POST',
+    headers:{'content-type':'application/json','origin':base},
+    body:JSON.stringify({username:adminUser,password:adminPassword})
+  });
+  const adminSetCookie = adminLogin.headers.get('set-cookie') || '';
+  const adminCookie = adminSetCookie.split(';')[0];
+  if (adminLogin.status !== 200 || !adminCookie) throw new Error('ADMIN_LOGIN_FAILED_' + adminLogin.status);
+  const gates = await fetch(base + '/api/audit/gates', {headers:{cookie:adminCookie}});
+  const gatesBody = await readJson(gates);
+  auditGatesStatus = gates.status;
+  auditGatesProductionReady = gatesBody.productionReady ?? gatesBody.production_ready ?? null;
+  auditGatesDecision = gatesBody.decision ?? null;
+  if (gates.status !== 200) throw new Error('ADMIN_AUDIT_GATES_FAILED_' + gates.status);
+  await fetch(base + '/api/logout', {
+    method:'POST', headers:{'content-type':'application/json','origin':base,cookie:adminCookie}, body:'{}'
+  });
 }
 
 const runNonce = String(process.env.RAILWAY_DEPLOYMENT_ID || crypto.randomUUID()).replace(/[^a-zA-Z0-9-]/g,'').slice(0,48);
