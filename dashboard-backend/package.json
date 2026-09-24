@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --check index.js && node --check test-central-juridica-v32-audit-keyring-compat.mjs && node --check prepare-central-juridica-v32-isolated.mjs && node --check start-central-juridica-v32-isolated.mjs"
   },
   "dependencies": {
     "express": "^4.18.2",
