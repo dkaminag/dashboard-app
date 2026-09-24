@@ -2,19 +2,50 @@
 Date: 2026-09-24
 
 ## Final status
-DELIVERED / OPERATIONAL / GO-LIVE READY
+DELIVERED / OPERATIONAL / CANONICAL CUTOVER COMPLETE
 
 Public URL:
 https://central-juridica-v3-2-prod-production.up.railway.app
 
+## Canonical cutover — 2026-09-24 08:48 BRT
+
+Explicit human authorization for the canonical v3.2 cutover was received.
+
+Canonical Railway service:
+- service: `central-juridica-v3-2-prod`
+- deployment: `d98fecf9-4283-4421-b391-05bfb81d274f`
+- source: `dashboard-app@d76a2dbf257853d495c177f7930c20c5ce5278bc`
+- canonical HTTPS endpoint: `https://central-juridica-v3-2-prod-production.up.railway.app`
+- primary database: `central_juridica_v32_prod_r3`
+- DR database: `central_juridica_v32_dr_r3`
+
+Cutover deployment evidence:
+- source/target DR separation: PASS
+- least-privilege runtime role: PASS
+- final encrypted backup/restore: PASS
+- `/api/ready`: 200
+- no destructive rollback deletion: PASS
+
+Fresh post-cutover verifier:
+- deployment: `c4a5aaa2-c85b-42c3-b913-39cc1580ee83`
+- mode: `intake-only` because password-only admin automation is no longer appropriate after MFA enrollment
+- UI: 200
+- health: 200
+- ready: 200
+- unauthenticated dashboard: 401
+- unauthenticated intake: 401
+- first authenticated intake: 201
+- idempotent replay: 200 / `replayed=true`
+
+The earlier full verifier remains the evidence for QA login/session/dashboard/logout and the pre-enrollment mandatory-MFA gate. The post-cutover verifier intentionally does not bypass or automate the administrator's second factor.
+
+No institutional custom domain exists, so this Railway-managed HTTPS endpoint is the canonical public endpoint until a governed custom-domain change is separately approved.
+
 ## Active production
 - Railway project: central-juridica-brito-peovezan
 - service: central-juridica-v3-2-prod
-- deployment: b058e166-3271-4e6d-a917-69441c25df98
-- snapshot: 067be727-1fc7-431b-88fc-35a1b25fcb66
-- wrapper commit: f23e532876b35cfa83677966b463c765a807ed8c
-- admin-first commit: 1b93b69d0d6148d9f35f92c6025d13cd2cedaed9
-- immutable runtime pin: d507a9955be07ef710d410b5263686ac75caeeff
+- deployment: d98fecf9-4283-4421-b391-05bfb81d274f
+- source commit: d76a2dbf257853d495c177f7930c20c5ce5278bc
 - app version: 3.2.0-preview
 
 ## Active R3 databases
@@ -123,6 +154,8 @@ The Railway-managed HTTPS domain is live.
 Google/AI/SAN integrations require their own live gate before use with real legal data. They are not required for the approved core production cutover.
 
 ## Operational classification
+- canonical cutover authorization: PASS
+- canonical endpoint promoted: PASS
 - core deployed: PASS
 - public HTTPS: PASS
 - UI: PASS
@@ -134,7 +167,7 @@ Google/AI/SAN integrations require their own live gate before use with real lega
 - least privilege: PASS
 - human admin exists/login works: PASS
 - mandatory admin MFA enforcement: PASS
-- human MFA enrollment: FIRST-LOGIN ACTION REQUIRED
+- password-only automated admin verification after MFA: intentionally disabled
 - destructive rollback risk introduced: NO
 
-The R3 release is the canonical operational baseline.
+The R3 release is the canonical operational baseline and the canonical cutover is complete.
