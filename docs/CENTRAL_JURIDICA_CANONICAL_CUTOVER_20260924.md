@@ -176,3 +176,50 @@ Até lá:
 - intake/QA técnico permanecem aprovados;
 - recursos administrativos protegidos permanecem fail-closed;
 - v3.1.1 permanece preservada como rollback.
+
+
+## 10. Revalidação independente pós-cutover — 24/09/2026 14:00 BRT
+
+Foi executada nova validação sem alterar a credencial administrativa.
+
+### Correção operacional do verifier
+
+O `preDeployCommand` do serviço `central-juridica-cutover-smoke-verifier` estava encadeado como um único comando com `&&`. No runtime Railway, essa forma não executava o segundo script de smoke de maneira verificável.
+
+A configuração foi endurecida para execução fail-closed via shell:
+
+`sh -lc 'set -e; node audit-keyring-canary.mjs; node smoke.mjs'`
+
+O modo normal foi restaurado para:
+
+`CJ_QA_SMOKE_MODE=intake-only`
+
+Deploy estável após a correção:
+
+- deployment: `db002682-80e3-455a-8d86-44102359c7c5`
+- status: `SUCCESS`
+- audit keyring canary: `PASS`
+- historical audit key present: `true`
+- combined intake smoke: `PASS`
+- UI: `200`
+- health: `200`
+- ready: `200`
+- dashboard sem login: `401`
+- intake sem credencial: `401`
+- primeiro intake autenticado: `201`
+- replay idempotente: `200`
+- replayed: `true`
+
+### Full smoke independente
+
+Foi executado temporariamente `CJ_QA_SMOKE_MODE=full`, preservando todas as credenciais por reference variables e sem alterar banco, senha, MFA ou sessões.
+
+Deploy de prova:
+
+- deployment: `5c0bb657-10ed-49eb-b4a1-1aa493b81ad4`
+- resultado esperado: `FAILED` por gate administrativo
+- QA login/auth: avançou até o RBAC do audit gate;
+- QA audit gate: `403` com perfil `assistant`, comportamento esperado;
+- admin login: `ADMIN_LOGIN_FAILED_401`.
+
+Conclusão: o drift da credencial administrativa permanece reproduzível e independente do verifier. O core canônico e o intake continuam operacionais; o único blocker humano remanescente permanece a ressincronização controlada da credencial admin seguida do fluxo de MFA.
