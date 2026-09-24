@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "node --check smoke.mjs && node --check server.mjs && node --check audit-keyring-canary.mjs",
+    "build": "node --check smoke.mjs && node --check server.mjs && node --check audit-keyring-canary.mjs && node --check admin-credential-resync.mjs",
     "start": "node server.mjs"
   }
 }
