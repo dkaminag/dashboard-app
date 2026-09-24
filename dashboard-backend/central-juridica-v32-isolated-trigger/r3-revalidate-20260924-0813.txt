@@ -1,0 +1,2 @@
+Central Juridica v3.2 R3 governed source refresh — 2026-09-24.
+Purpose: force Railway to build current HEAD after stale-snapshot diagnosis. No runtime logic or secrets.
