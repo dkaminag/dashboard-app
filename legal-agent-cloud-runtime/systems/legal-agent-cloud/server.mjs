@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { buildPostgresPoolConfig } from "./pg-config.mjs";
 
 const { Pool } = pg;
 const scryptAsync = promisify(crypto.scrypt);
@@ -75,14 +76,9 @@ if (!DATABASE_URL) throw new Error("LEGAL_DATABASE_URL is required");
 const dataKey = Buffer.from(DATA_KEY_B64, "base64");
 if (dataKey.length !== 32) throw new Error("LEGAL_DATA_KEY_B64 must decode to exactly 32 bytes");
 
-const pgSslFlag = String(process.env.LEGAL_PG_SSL || "").toLowerCase();
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: pgSslFlag === "false" || pgSslFlag === "0" ? false : { rejectUnauthorized: false },
-  max: 8,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
-});
+const pool = new Pool(
+  buildPostgresPoolConfig(DATABASE_URL, process.env.LEGAL_PG_SSL),
+);
 
 let legalSkill = "";
 let ready = false;
