@@ -692,7 +692,10 @@ function extractAuthorityIdentifiers(textValue) {
 
 function authoritySourceText(history, message, files) {
   const parts = [String(message || "")];
-  for (const item of history || []) parts.push(String(item?.text || ""));
+  for (const item of history || []) {
+    if (item?.role !== "user") continue;
+    parts.push(String(item?.text || ""));
+  }
   for (const file of files || []) {
     if (!TEXT_ATTACHMENT_MIME.has(file.mime)) continue;
     try {
