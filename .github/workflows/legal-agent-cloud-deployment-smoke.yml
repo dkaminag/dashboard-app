@@ -66,9 +66,16 @@ jobs:
           if ($root.StatusCode -ne 200) { throw "ROOT_HTTP_$($root.StatusCode)" }
           if ($root.Content -notmatch "Pesquisar fontes públicas atuais \(opt-in\)") { throw "PUBLIC_SEARCH_OPT_IN_UI_MISSING" }
           if ($root.Content -notmatch 'id="provider-policy-ack"') { throw "PROVIDER_POLICY_ACK_UI_MISSING" }
-          if ($root.Content -notmatch 'value="gpt-5.6-sol"') { throw "MODEL_SOL_OPTION_MISSING" }
-          if ($root.Content -notmatch 'value="gpt-5.6-terra"') { throw "MODEL_TERRA_OPTION_MISSING" }
-          if ($root.Content -notmatch 'value="gpt-5.6-luna"') { throw "MODEL_LUNA_OPTION_MISSING" }
+
+          # Provider/model options are rendered dynamically from app.js, not embedded in index.html.
+          $app = Get-WithRetry "/app.js"
+          if ($app.StatusCode -ne 200) { throw "APP_JS_HTTP_$($app.StatusCode)" }
+          if ($app.Content -notmatch 'gpt-5\.6-sol') { throw "MODEL_SOL_OPTION_MISSING" }
+          if ($app.Content -notmatch 'gpt-5\.6-terra') { throw "MODEL_TERRA_OPTION_MISSING" }
+          if ($app.Content -notmatch 'gpt-5\.6-luna') { throw "MODEL_LUNA_OPTION_MISSING" }
+          if ($app.Content -notmatch 'openai/gpt-oss-120b') { throw "MODEL_GROQ_120B_OPTION_MISSING" }
+          if ($app.Content -notmatch 'openai/gpt-oss-20b') { throw "MODEL_GROQ_20B_OPTION_MISSING" }
+          if ($app.Content -notmatch 'AI_AUTHORITY_VERIFICATION_REQUIRED') { throw "AUTHORITY_GATE_UI_CONTRACT_MISSING" }
 
           $protected = Get-WithRetry "/api/threads"
           if ($protected.StatusCode -ne 401) { throw "PROTECTED_ROUTE_EXPECTED_401_GOT_$($protected.StatusCode)" }
@@ -84,6 +91,8 @@ jobs:
             authenticated = [bool]$statusBody.authenticated
             privacy_fields_present = $true
             public_search_default = "OPT_IN"
+            model_contract_source = "app.js"
+            authority_gate_ui_contract = $true
             protected_route = [int]$protected.StatusCode
             secrets_observed = $false
             real_matter_data_used = $false
