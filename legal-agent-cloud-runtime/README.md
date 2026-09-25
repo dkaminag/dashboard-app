@@ -13,7 +13,7 @@ The files in this directory are copied byte-for-byte from that exact SAN commit.
 
 This refresh includes the governed multi-provider release from SAN PR #191, sanitized provider diagnostics from SAN PR #192, the Groq GPT-OSS text-message compatibility fix from SAN PR #193, the bounded Groq reasoning/output profile from SAN PR #195, the fail-closed legal-authority provenance gate from SAN PR #196, PostgreSQL SSL-mode normalization from SAN PR #198, and deterministic Groq input-context budgeting from SAN PR #199.
 
-Groq free-tier inference uses medium reasoning with a 4096-token output budget. Groq GPT-OSS is treated as text-only in this runtime: plain-text messages use Groq's documented string-content contract; TXT/RTF are decoded locally in-memory and appended to the message; image/PDF/DOC/DOCX inputs fail closed until a governed local extraction/conversion path is added. No attachment body is persisted by this application.
+Groq free-tier inference uses medium reasoning with a 4096-token output budget. Plain-text messages use Groq's documented string-content contract. TXT/RTF are decoded locally in-memory; PDF files with a text layer and DOCX files are extracted locally in a bounded worker and appended to the model input. Images, legacy DOC files, password-protected PDFs and scanned PDFs without extractable text fail closed. No attachment body is persisted by this application.
 
 Do not implement legal-agent business logic directly here. Changes must originate in SAN, pass SAN CI, then be snapshotted again with a new exact commit pin.
 
@@ -64,3 +64,8 @@ SAN PR #210 closes a citation-provenance loophole: when public research is OFF, 
 ## Bounded authority-provenance self-repair
 
 SAN PR #221 improves the no-research path without weakening the authority gate. An unsourced authority in the first draft triggers one private regeneration from the original matter input. The repaired answer is rechecked by the deterministic legal-consistency gate and the authority-provenance gate. Repair metadata stores only aggregate status/counts; it does not persist the rejected draft or expose hidden instructions.
+
+
+## Deployment snapshot completeness
+
+This snapshot includes the local document-extraction runtime files required by `package.json` and `server.mjs`: `document-extract.mjs`, `document-extract-worker.mjs`, and `document-extract-smoke.mjs`. Missing any of these files is a deployment-blocking snapshot error.

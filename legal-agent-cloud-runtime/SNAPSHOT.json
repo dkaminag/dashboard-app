@@ -27,6 +27,18 @@
       "git_blob_sha": "6ea3c30eb25361950d10c746e43e0891bf0b735c"
     },
     {
+      "source": "systems/legal-agent-cloud/document-extract.mjs",
+      "git_blob_sha": "fafed299397c4bb2a558041ffe1eaae25e376f85"
+    },
+    {
+      "source": "systems/legal-agent-cloud/document-extract-worker.mjs",
+      "git_blob_sha": "c711ab3e80642e10c8afb8a9759aedc5c452f86f"
+    },
+    {
+      "source": "systems/legal-agent-cloud/document-extract-smoke.mjs",
+      "git_blob_sha": "5dfd7e3f6110d0d869e838ce63b7f6f50998855a"
+    },
+    {
       "source": "systems/legal-agent-cloud/server.mjs",
       "git_blob_sha": "51c30ab24e2f93a4d8ecb5c1eab8710365ec4c5c"
     },
