@@ -493,7 +493,7 @@ function syncProviderHelp(providerName) {
     ? "Crie/gerencie gratuitamente em console.groq.com/keys."
     : "Crie/gerencie em platform.openai.com/api-keys.";
   $("provider-file-help").textContent = groq
-    ? "Groq: imagens e TXT/RTF. PDF/DOC/DOCX ficam bloqueados até adicionarmos extração local."
+    ? "Groq GPT-OSS: TXT/RTF somente. Imagens, PDF, DOC e DOCX ficam bloqueados até adicionarmos extração/conversão local."
     : "OpenAI: mantém suporte aos formatos de documentos aceitos pelo portal.";
 }
 

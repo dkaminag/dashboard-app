@@ -5,15 +5,15 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `39ea99cb7953d53ba58f0c789f8f1af196ef0ac3`
+- commit: `47de613a22dd6d2f02be13b0ddbb8c6d2805746e`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
 The files in this directory are copied byte-for-byte from that exact SAN commit. `SNAPSHOT.json` records the matching Git blob identities.
 
-This refresh includes the governed multi-provider release certified by SAN PR #191 and sanitized provider diagnostics from SAN PR #192: Groq is available as the default free-start provider with `openai/gpt-oss-120b`, OpenAI remains selectable, provider/model combinations are allowlisted, public web research remains OFF by default and per-turn opt-in, and provider-specific data-policy acknowledgment is required before inference.
+This refresh includes the governed multi-provider release from SAN PR #191, sanitized provider diagnostics from SAN PR #192, and the Groq GPT-OSS text-message compatibility fix from SAN PR #193. Groq remains the default free-start provider with `openai/gpt-oss-120b`, OpenAI remains selectable, provider/model combinations are allowlisted, public web research remains OFF by default and per-turn opt-in, and provider-specific data-policy acknowledgment is required before inference.
 
-Groq document handling is fail-closed: image and TXT/RTF inputs are supported by this wrapper, while PDF/DOC/DOCX are rejected under Groq until a governed local extraction path is added. No attachment body is persisted by this application.
+Groq GPT-OSS is treated as text-only in this runtime: plain-text messages use Groq's documented string-content contract; TXT/RTF are decoded locally in-memory and appended to the message; image/PDF/DOC/DOCX inputs fail closed until a governed local extraction/conversion path is added. No attachment body is persisted by this application.
 
 Do not implement legal-agent business logic directly here. Changes must originate in SAN, pass SAN CI, then be snapshotted again with a new exact commit pin.
 
