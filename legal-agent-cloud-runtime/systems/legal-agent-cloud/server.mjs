@@ -1059,17 +1059,26 @@ async function route(req, res) {
         usage: answer.usage,
       });
     } catch (error) {
-      await audit(user.id, "legal-agent-error", {
-        threadRef: sha256(thread.id).slice(0, 16),
-        mode,
-        webSearch,
+      const diagnostic = {
         providerStatus: error.providerStatus || null,
         providerCode: error.providerCode || error.message,
+        mode,
+        webSearch,
         latencyMs: Date.now() - started,
+      };
+      await audit(user.id, "legal-agent-error", {
+        threadRef: sha256(thread.id).slice(0, 16),
+        ...diagnostic,
       });
+      console.warn(JSON.stringify({
+        level: "warn",
+        event: "legal-agent-provider-error",
+        ...diagnostic,
+      }));
       json(res, error.statusCode || 500, {
         error: error.message || "LEGAL_AGENT_FAILED",
         providerStatus: error.providerStatus || undefined,
+        providerCode: error.providerCode || undefined,
       });
     }
     return;
@@ -1246,6 +1255,24 @@ async function init() {
     throw new Error("LEGAL_SKILL_INTEGRITY_FAILED");
   }
   await migrate();
+  const lastProviderError = await pool.query(
+    `SELECT metadata->>'providerStatus' AS provider_status,
+            metadata->>'providerCode' AS provider_code,
+            created_at
+       FROM legal_agent_audit
+      WHERE action='legal-agent-error'
+      ORDER BY id DESC
+      LIMIT 1`,
+  );
+  if (lastProviderError.rows[0]) {
+    console.info(JSON.stringify({
+      level: "info",
+      event: "legal-agent-last-provider-diagnostic",
+      providerStatus: lastProviderError.rows[0].provider_status || null,
+      providerCode: lastProviderError.rows[0].provider_code || null,
+      createdAt: lastProviderError.rows[0].created_at,
+    }));
+  }
   ready = true;
   console.log(JSON.stringify({ level: "info", event: "legal-agent-cloud-ready", port: PORT, version: "0.1.0" }));
 }
