@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `e8654382ee92e3984d55291f669badf48bf80882`
+- commit: `fe35b36af28a8d17d96eb5e31e9564096494349d`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -69,3 +69,8 @@ SAN PR #221 improves the no-research path without weakening the authority gate. 
 ## Deployment snapshot completeness
 
 This snapshot includes the local document-extraction runtime files required by `package.json` and `server.mjs`: `document-extract.mjs`, `document-extract-worker.mjs`, and `document-extract-smoke.mjs`. Missing any of these files is a deployment-blocking snapshot error.
+
+
+## PDF.js standard-font runtime fix
+
+SAN PR #230 binds `pdfjs-dist` standard-font data to the exact local package path used by the isolated document-extraction worker. This removes an implicit runtime-directory dependency exposed by the downstream container build gate when the embedded Helvetica PDF smoke ran inside Docker. The change does not add OCR, external file access, provider calls, or attachment persistence.

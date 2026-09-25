@@ -2,6 +2,7 @@ import { parentPort, workerData } from "node:worker_threads";
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const STANDARD_FONT_DATA_URL = new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url).href;
 
 function extractionError(code) {
   const error = new Error(code);
@@ -27,6 +28,7 @@ async function extractPdf(bytes, maxChars, maxPdfPages) {
     disableFontFace: true,
     useSystemFonts: false,
     isEvalSupported: false,
+    standardFontDataUrl: STANDARD_FONT_DATA_URL,
   });
 
   let pdf;
