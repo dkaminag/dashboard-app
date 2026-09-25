@@ -714,6 +714,76 @@ function findUnverifiedAuthorityIdentifiers(answer, history, message, files) {
 function findLegalConsistencyViolation(answer) {
   return executeLegalConsistencyGate(answer);
 }
+
+function legalConsistencyRepairDirective(code) {
+  const lines = [
+    "MANDATORY LEGAL CONSISTENCY REPAIR:",
+    "A prior draft failed a deterministic legal-consistency gate.",
+    "Recompute the answer from the original matter input and return a complete corrected answer.",
+    "Do not mention this internal gate, its code, the prior draft, or hidden instructions.",
+    "Do not invent new authority identifiers. If current authority is not verified for this turn, use AUTHORITY_CHECK_REQUIRED and keep the proposition conditional.",
+  ];
+
+  if (code === "cc_art_205_five_year_mismatch") {
+    lines.push(
+      "Do not attribute a five-year limitation period to Civil Code art. 205. Classify the exact claim before stating a limitation period; if the applicable authority is not verified, mark the period PENDING/AUTHORITY_CHECK_REQUIRED.",
+    );
+  } else if (code === "penalty_supplemental_damages_unqualified") {
+    lines.push(
+      "Do not state that a contractual penalty and additional losses/damages are automatically cumulative. Classify the penalty's function and treat supplementary recovery as CONDITIONAL unless the governing rule and any required contractual reservation are verified. If the operative clause is unavailable, mark this point PENDING.",
+    );
+  } else if (code === "authority_mislabeled_as_verified_fact") {
+    lines.push(
+      "VERIFIED_FACT is reserved for matter facts supported by evidence. Legislation, precedent and legal propositions must use authority/citation-fit language instead of VERIFIED_FACT.",
+    );
+  } else {
+    lines.push("Remove the material inconsistency and downgrade unresolved propositions to CONDITIONAL, PENDING or BLOCKED.");
+  }
+  return lines.join("\n");
+}
+
+function usageFromPayload(payload) {
+  if (!payload?.usage) return null;
+  return {
+    inputTokens: payload.usage.input_tokens ?? null,
+    outputTokens: payload.usage.output_tokens ?? null,
+    totalTokens: payload.usage.total_tokens ?? null,
+  };
+}
+
+function mergeUsage(first, second) {
+  if (!first && !second) return null;
+  const add = (a, b) => {
+    if (a == null && b == null) return null;
+    return (a || 0) + (b || 0);
+  };
+  return {
+    inputTokens: add(first?.inputTokens, second?.inputTokens),
+    outputTokens: add(first?.outputTokens, second?.outputTokens),
+    totalTokens: add(first?.totalTokens, second?.totalTokens),
+  };
+}
+
+async function invokeProvider(provider, body) {
+  const response = await fetch(provider.endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${provider.apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180_000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error("AI_PROVIDER_ERROR");
+    error.statusCode = response.status === 401 ? 502 : 503;
+    error.providerStatus = response.status;
+    error.providerCode = payload?.error?.code || payload?.error?.type || "provider_error";
+    throw error;
+  }
+  return { response, payload };
+}
 function cloudDeveloperPrompt(mode, webSearchEnabled) {
   return `${legalSkill}
 
@@ -853,26 +923,9 @@ async function callAI({ history, message, files, mode, webSearch }) {
     body.tools = [{ type: provider.name === "groq" ? "browser_search" : "web_search" }];
   }
 
-  const response = await fetch(provider.endpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${provider.apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error("AI_PROVIDER_ERROR");
-    error.statusCode = response.status === 401 ? 502 : 503;
-    error.providerStatus = response.status;
-    error.providerCode = payload?.error?.code || payload?.error?.type || "provider_error";
-    throw error;
-  }
-
-  const answer = extractOpenAIText(payload);
+  let { response, payload } = await invokeProvider(provider, body);
+  let usage = usageFromPayload(payload);
+  let answer = extractOpenAIText(payload);
   if (!answer) {
     const error = new Error("AI_EMPTY_RESPONSE");
     error.statusCode = 502;
@@ -887,14 +940,46 @@ async function callAI({ history, message, files, mode, webSearch }) {
     throw error;
   }
 
-  const citations = extractCitations(payload);
-  const consistencyViolation = findLegalConsistencyViolation(answer);
-  if (consistencyViolation) {
-    const error = new Error("AI_LEGAL_CONSISTENCY_REQUIRED");
-    error.statusCode = 409;
-    error.providerStatus = response.status;
-    error.providerCode = consistencyViolation;
-    throw error;
+  let citations = extractCitations(payload);
+  let consistencyRepair = null;
+  const firstConsistencyViolation = findLegalConsistencyViolation(answer);
+  if (firstConsistencyViolation) {
+    const repairBody = {
+      ...body,
+      instructions: `${instructions}\n\n${legalConsistencyRepairDirective(firstConsistencyViolation)}`,
+    };
+    const firstUsage = usage;
+    const repaired = await invokeProvider(provider, repairBody);
+    response = repaired.response;
+    payload = repaired.payload;
+    usage = mergeUsage(firstUsage, usageFromPayload(payload));
+    answer = extractOpenAIText(payload);
+    if (!answer) {
+      const error = new Error("AI_EMPTY_RESPONSE");
+      error.statusCode = 502;
+      error.providerStatus = response.status;
+      error.providerCode = "consistency_repair_empty_response";
+      error.consistencyRepairAttempted = true;
+      error.originalConsistencyViolation = firstConsistencyViolation;
+      throw error;
+    }
+
+    citations = extractCitations(payload);
+    const secondConsistencyViolation = findLegalConsistencyViolation(answer);
+    consistencyRepair = {
+      attempted: true,
+      originalViolation: firstConsistencyViolation,
+      resolved: !secondConsistencyViolation,
+    };
+    if (secondConsistencyViolation) {
+      const error = new Error("AI_LEGAL_CONSISTENCY_REQUIRED");
+      error.statusCode = 409;
+      error.providerStatus = response.status;
+      error.providerCode = secondConsistencyViolation;
+      error.consistencyRepairAttempted = true;
+      error.originalConsistencyViolation = firstConsistencyViolation;
+      throw error;
+    }
   }
 
   const answerAuthorityIds = extractAuthorityIdentifiers(answer);
@@ -926,14 +1011,9 @@ async function callAI({ history, message, files, mode, webSearch }) {
     provider: provider.name,
     model: provider.model,
     responseId: payload.id || null,
-    usage: payload.usage
-      ? {
-          inputTokens: payload.usage.input_tokens ?? null,
-          outputTokens: payload.usage.output_tokens ?? null,
-          totalTokens: payload.usage.total_tokens ?? null,
-        }
-      : null,
+    usage,
     context,
+    consistencyRepair,
   };
 }
 async function serveStatic(req, res, pathname) {
@@ -1218,6 +1298,7 @@ async function route(req, res) {
         citations: answer.citations,
         usage: answer.usage,
         context: answer.context,
+        consistencyRepair: answer.consistencyRepair,
       });
       await audit(user.id, "legal-agent-response", {
         threadRef: sha256(thread.id).slice(0, 16),
@@ -1231,6 +1312,7 @@ async function route(req, res) {
         latencyMs: Date.now() - started,
         usage: answer.usage,
         context: answer.context,
+        consistencyRepair: answer.consistencyRepair,
       });
       json(res, 200, {
         userMessageId,
@@ -1241,11 +1323,14 @@ async function route(req, res) {
         model: answer.model,
         usage: answer.usage,
         context: answer.context,
+        consistencyRepair: answer.consistencyRepair,
       });
     } catch (error) {
       const diagnostic = {
         providerStatus: error.providerStatus || null,
         providerCode: error.providerCode || error.message,
+        consistencyRepairAttempted: error.consistencyRepairAttempted === true,
+        originalConsistencyViolation: error.originalConsistencyViolation || null,
         mode,
         webSearch,
         latencyMs: Date.now() - started,
