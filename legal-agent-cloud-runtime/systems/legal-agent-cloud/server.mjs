@@ -658,26 +658,10 @@ async function callAI({ history, message, files, mode, webSearch }) {
     throw error;
   }
 
-  const input = [];
-  for (const item of history.slice(-HISTORY_MESSAGE_LIMIT)) {
-    input.push({
-      role: item.role,
-      content: [{ type: "input_text", text: item.text }],
-    });
-  }
-
-  const content = [{ type: "input_text", text: message }];
-  for (const file of files) {
-    if (file.mime.startsWith("image/")) {
-      content.push({
-        type: "input_image",
-        image_url: `data:${file.mime};base64,${file.data}`,
-        detail: provider.name === "groq" ? "auto" : "high",
-      });
-      continue;
-    }
-
-    if (provider.name === "groq") {
+  let input;
+  if (provider.name === "groq") {
+    let groqMessage = message;
+    for (const file of files) {
       if (!TEXT_ATTACHMENT_MIME.has(file.mime)) {
         const error = new Error("AI_PROVIDER_FILE_UNSUPPORTED");
         error.statusCode = 400;
@@ -689,20 +673,40 @@ async function callAI({ history, message, files, mode, webSearch }) {
         error.statusCode = 400;
         throw error;
       }
-      content.push({
-        type: "input_text",
-        text: `\n[Anexo local: ${file.name}]\n${localText}\n[Fim do anexo]\n`,
+      groqMessage += `\n\n[Anexo local: ${file.name}]\n${localText}\n[Fim do anexo]`;
+    }
+    input = history.slice(-HISTORY_MESSAGE_LIMIT).map((item) => ({
+      role: item.role,
+      content: item.text,
+    }));
+    input.push({ role: "user", content: groqMessage });
+  } else {
+    input = [];
+    for (const item of history.slice(-HISTORY_MESSAGE_LIMIT)) {
+      input.push({
+        role: item.role,
+        content: [{ type: "input_text", text: item.text }],
       });
-      continue;
     }
 
-    content.push({
-      type: "input_file",
-      filename: file.name,
-      file_data: `data:${file.mime};base64,${file.data}`,
-    });
+    const content = [{ type: "input_text", text: message }];
+    for (const file of files) {
+      if (file.mime.startsWith("image/")) {
+        content.push({
+          type: "input_image",
+          image_url: `data:${file.mime};base64,${file.data}`,
+          detail: "high",
+        });
+        continue;
+      }
+      content.push({
+        type: "input_file",
+        filename: file.name,
+        file_data: `data:${file.mime};base64,${file.data}`,
+      });
+    }
+    input.push({ role: "user", content });
   }
-  input.push({ role: "user", content });
 
   const body = {
     model: provider.model,
@@ -738,6 +742,14 @@ async function callAI({ history, message, files, mode, webSearch }) {
   if (!answer) {
     const error = new Error("AI_EMPTY_RESPONSE");
     error.statusCode = 502;
+    error.providerStatus = response.status;
+    const outputTypes = Array.isArray(payload?.output)
+      ? payload.output.map((item) => item?.type).filter(Boolean).join(",")
+      : "";
+    error.providerCode =
+      payload?.error?.code ||
+      payload?.error?.type ||
+      `empty_response:${payload?.status || "unknown"}:${outputTypes || "no_output"}`;
     throw error;
   }
   return {
