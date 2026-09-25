@@ -28,6 +28,14 @@ const OPENAI_DEFAULT_MODEL = OPENAI_MODELS.has(requestedOpenAIModel) ? requested
 const requestedGroqModel = process.env.LEGAL_GROQ_MODEL || "openai/gpt-oss-120b";
 const GROQ_DEFAULT_MODEL = GROQ_MODELS.has(requestedGroqModel) ? requestedGroqModel : "openai/gpt-oss-120b";
 const REASONING_EFFORT = process.env.LEGAL_REASONING_EFFORT || "high";
+const GROQ_REASONING_SET = new Set(["low", "medium", "high"]);
+const requestedGroqReasoning = String(process.env.LEGAL_GROQ_REASONING_EFFORT || "medium").toLowerCase();
+const GROQ_REASONING_EFFORT = GROQ_REASONING_SET.has(requestedGroqReasoning) ? requestedGroqReasoning : "medium";
+const requestedGroqMaxOutput = Number(process.env.LEGAL_GROQ_MAX_OUTPUT_TOKENS || 4096);
+const GROQ_MAX_OUTPUT_TOKENS =
+  Number.isInteger(requestedGroqMaxOutput) && requestedGroqMaxOutput >= 1024 && requestedGroqMaxOutput <= 8192
+    ? requestedGroqMaxOutput
+    : 4096;
 const PASSWORD_PEPPER = process.env.LEGAL_PASSWORD_PEPPER || "";
 const SESSION_TTL_HOURS = Math.min(Math.max(Number(process.env.LEGAL_SESSION_TTL_HOURS || 12), 1), 168);
 const MAX_JSON_BYTES = 24 * 1024 * 1024;
@@ -710,10 +718,11 @@ async function callAI({ history, message, files, mode, webSearch }) {
 
   const body = {
     model: provider.model,
-    reasoning: { effort: REASONING_EFFORT },
+    reasoning: { effort: provider.name === "groq" ? GROQ_REASONING_EFFORT : REASONING_EFFORT },
     instructions: cloudDeveloperPrompt(mode, webSearch),
     input,
   };
+  if (provider.name === "groq") body.max_output_tokens = GROQ_MAX_OUTPUT_TOKENS;
   if (provider.name === "openai") body.store = false;
   if (webSearch) {
     body.tools = [{ type: provider.name === "groq" ? "browser_search" : "web_search" }];
@@ -749,7 +758,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
     error.providerCode =
       payload?.error?.code ||
       payload?.error?.type ||
-      `empty_response:${payload?.status || "unknown"}:${outputTypes || "no_output"}`;
+      `empty_response:${payload?.status || "unknown"}:${payload?.incomplete_details?.reason || "no_reason"}:${outputTypes || "no_output"}`;
     throw error;
   }
   return {
@@ -1200,7 +1209,8 @@ async function route(req, res) {
       provider: provider.name,
       model: provider.model,
       source: provider.source,
-      reasoningEffort: REASONING_EFFORT,
+      reasoningEffort: provider.name === "groq" ? GROQ_REASONING_EFFORT : REASONING_EFFORT,
+      maxOutputTokens: provider.name === "groq" ? GROQ_MAX_OUTPUT_TOKENS : null,
       supportedProviders: {
         openai: [...OPENAI_MODELS],
         groq: [...GROQ_MODELS],
