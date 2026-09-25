@@ -119,13 +119,16 @@ if (!intakeOnly) {
   });
 }
 
-const runNonce = String(process.env.RAILWAY_DEPLOYMENT_ID || crypto.randomUUID()).replace(/[^a-zA-Z0-9-]/g,'').slice(0,48);
-const key = 'qa-v32-intake-' + runNonce;
+// Stable synthetic canary: future verifier deployments reuse the same
+// idempotency identity instead of creating an unbounded number of QA leads.
+// Existing historical QA rows are intentionally NOT touched here.
+const runNonce = 'stable-canary-v1';
+const key = 'qa-v32-intake-stable-canary-v1';
 const payload = {
-  name: 'Lead QA Preview ' + runNonce.slice(-8),
-  organization: 'QA Synthetic',
+  name: 'Lead QA Stable Canary',
+  organization: 'QA Synthetic Stable Canary',
   profileType: 'Empresa',
-  email: 'qa-v32-' + runNonce.toLowerCase() + '@example.invalid',
+  email: 'qa-v32-stable-canary@example.invalid',
   phone: '',
   preferredChannel: 'E-mail',
   area: 'Trabalhista Empresarial',
@@ -133,11 +136,11 @@ const payload = {
   deadlineDate: '',
   source: 'site',
   landingPage: '/qa-preview',
-  utmSource: 'qa',
+  utmSource: 'qa-canary',
   utmMedium: 'synthetic',
-  utmCampaign: 'v32-live-' + runNonce,
+  utmCampaign: 'v32-stable-canary-v1',
   referrer: '',
-  contentCluster: 'qa'
+  contentCluster: 'qa-canary'
 };
 
 const unauthIntake = await fetch(base + '/api/intake/leads', {
@@ -162,7 +165,9 @@ async function ingest() {
 }
 
 const first = await ingest();
-if (first.response.status !== 201 || first.body.ok !== true || first.body.replayed === true) {
+const firstIsCreate = first.response.status === 201 && first.body.ok === true && first.body.replayed !== true;
+const firstIsStableReplay = first.response.status === 200 && first.body.ok === true && first.body.replayed === true;
+if (!firstIsCreate && !firstIsStableReplay) {
   throw new Error('V32_FIRST_INGEST_FAILED_' + first.response.status + '_' + String(first.body.error || ''));
 }
 const replay = await ingest();
@@ -194,9 +199,11 @@ console.log(JSON.stringify({
   staleSession:staleStatus,
   unauthIntake:unauthIntake.status,
   firstIntake:first.response.status,
+  firstIntakeMode:firstIsCreate ? 'created' : 'stable-replay',
   replayIntake:replay.response.status,
   replayed:true,
-  syntheticIdentityUnique:true
+  syntheticIdentity:'stable-canary-v1',
+  boundedSyntheticRows:true
 }));
 
 // R2 final fresh-source UI smoke: 2026-09-24
