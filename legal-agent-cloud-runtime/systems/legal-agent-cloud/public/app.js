@@ -34,7 +34,12 @@ const errorMessages = {
   INVALID_API_KEY_FORMAT: "Chave inválida para o provedor selecionado. OpenAI usa chaves sk- e Groq usa chaves gsk_.",
   INVALID_PROVIDER: "Provedor de IA inválido.",
   INVALID_MODEL: "Modelo inválido para o provedor selecionado.",
-  AI_PROVIDER_FILE_UNSUPPORTED: "No modo Groq GPT-OSS, envie apenas TXT/RTF. Imagens, PDF, DOC e DOCX exigem conversão local governada ou outro provedor compatível.",
+  AI_PROVIDER_FILE_UNSUPPORTED: "No modo Groq GPT-OSS, use TXT/RTF, PDF com camada de texto ou DOCX. Imagens e DOC legado continuam bloqueados.",
+  AI_PROVIDER_FILE_NO_TEXT: "Não foi encontrado texto extraível no anexo. PDF escaneado/imagem exige OCR fora deste fluxo.",
+  AI_PROVIDER_FILE_PASSWORD_REQUIRED: "O PDF está protegido por senha. Remova a proteção ou forneça uma versão legível.",
+  AI_PROVIDER_DOCUMENT_TOO_LARGE: "O documento ultrapassa o limite seguro de extração local. Divida-o em partes menores.",
+  AI_PROVIDER_FILE_EXTRACTION_TIMEOUT: "A extração local do documento excedeu o tempo seguro. Divida o arquivo e tente novamente.",
+  AI_PROVIDER_FILE_EXTRACTION_FAILED: "Não foi possível extrair o texto do documento com segurança.",
   AI_PROVIDER_TEXT_FILE_TOO_LARGE: "O arquivo de texto é grande demais para envio seguro pelo provedor selecionado.",
   AI_AUTHORITY_VERIFICATION_REQUIRED: "A resposta tentou usar autoridade jurídica específica sem fonte verificável. Ative ‘Pesquisar fontes públicas atuais’ ou forneça a fonte no texto/anexo.",
   AI_CITATION_VERIFICATION_REQUIRED: "A resposta mencionou autoridade jurídica específica, mas o provedor não devolveu uma citação verificável. Refaça com pesquisa pública ou revise a fonte antes de usar.",
@@ -193,6 +198,16 @@ function messageNode(message) {
     const tag = document.createElement("span");
     tag.textContent = `Contexto: ${metadata.context.historyOmitted} msg. antiga(s) omitida(s)`;
     tag.title = "O histórico mais recente foi priorizado para respeitar o limite seguro do provedor; a mensagem atual não foi truncada.";
+    meta.append(tag);
+  }
+  if (message.role === "assistant" && metadata.authorityRepair?.attempted) {
+    const tag = document.createElement("span");
+    tag.textContent = metadata.authorityRepair.resolved
+      ? "Autoridades: revisão automática"
+      : "Autoridades: revisão pendente";
+    tag.title = metadata.authorityRepair.resolved
+      ? "O primeiro rascunho continha autoridade específica sem proveniência; o sistema refez a resposta sem depender dessa autoridade."
+      : "A verificação de autoridade não foi concluída.";
     meta.append(tag);
   }
   if (meta.childNodes.length) block.append(meta);
@@ -503,7 +518,7 @@ function syncProviderHelp(providerName) {
     ? "Crie/gerencie gratuitamente em console.groq.com/keys."
     : "Crie/gerencie em platform.openai.com/api-keys.";
   $("provider-file-help").textContent = groq
-    ? "Groq GPT-OSS: TXT/RTF somente. Imagens, PDF, DOC e DOCX ficam bloqueados até adicionarmos extração/conversão local."
+    ? "Groq GPT-OSS: TXT/RTF, PDF com camada de texto e DOCX são extraídos localmente. Imagens, DOC legado e PDF escaneado sem texto continuam bloqueados."
     : "OpenAI: mantém suporte aos formatos de documentos aceitos pelo portal.";
 }
 
