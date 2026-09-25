@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `b8756ad9f754efefe23f626a83d818a7941d4c07`
+- commit: `e8654382ee92e3984d55291f669badf48bf80882`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -24,7 +24,7 @@ The reused Railway service is the historical non-canonical `central-juridica-v3-
 
 ## Authority provenance hardening
 
-When public research is OFF, the runtime now blocks newly generated specific legal authority identifiers (article/law/case/súmula/tema numbers) unless the exact identifier already appears in user-supplied readable text. This is a deterministic gate in addition to the Supervisor prompt. The UI instructs the lawyer to enable public research or provide the source instead of allowing an unsourced authority to pass through.
+When public research is OFF, specific legal authority identifiers (article/law/case/súmula/tema numbers) still require provenance from user-supplied readable text. The deterministic gate now performs one bounded private self-repair before blocking: the first unsafe draft is discarded and regenerated without unsupported identifiers, using general conditional reasoning plus `AUTHORITY_CHECK_REQUIRED`/`PENDING`. The repair never enables public research. If unsupported identifiers remain, the response still fails closed.
 
 
 ## PostgreSQL SSL-mode normalization
@@ -59,3 +59,8 @@ SAN PR #208 keeps the deterministic legal-consistency gate fail-closed but adds 
 ## Assistant-history authority provenance
 
 SAN PR #210 closes a citation-provenance loophole: when public research is OFF, legal authority identifiers found only in prior assistant/model responses no longer count as source authority. Only the current user message, prior user-role messages and readable user-supplied text attachments can establish pre-existing authority provenance. This prevents a hallucinated citation from laundering itself into later turns.
+
+
+## Bounded authority-provenance self-repair
+
+SAN PR #221 improves the no-research path without weakening the authority gate. An unsourced authority in the first draft triggers one private regeneration from the original matter input. The repaired answer is rechecked by the deterministic legal-consistency gate and the authority-provenance gate. Repair metadata stores only aggregate status/counts; it does not persist the rejected draft or expose hidden instructions.
