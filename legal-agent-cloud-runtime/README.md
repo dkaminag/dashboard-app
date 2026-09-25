@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `b8756ad9f754efefe23f626a83d818a7941d4c07`
+- commit: `46eaa99fc319356fbac7f9c45a9ff1ba945706fa`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -13,7 +13,7 @@ The files in this directory are copied byte-for-byte from that exact SAN commit.
 
 This refresh includes the governed multi-provider release from SAN PR #191, sanitized provider diagnostics from SAN PR #192, the Groq GPT-OSS text-message compatibility fix from SAN PR #193, the bounded Groq reasoning/output profile from SAN PR #195, the fail-closed legal-authority provenance gate from SAN PR #196, PostgreSQL SSL-mode normalization from SAN PR #198, and deterministic Groq input-context budgeting from SAN PR #199.
 
-Groq free-tier inference uses medium reasoning with a 4096-token output budget. Groq GPT-OSS is treated as text-only in this runtime: plain-text messages use Groq's documented string-content contract; TXT/RTF are decoded locally in-memory and appended to the message; image/PDF/DOC/DOCX inputs fail closed until a governed local extraction/conversion path is added. No attachment body is persisted by this application.
+Groq free-tier inference uses medium reasoning with a 4096-token output budget. Provider dispatch remains text-only, but TXT/RTF, text-based PDF and DOCX are now converted to text locally in request memory before the Groq call. PDF/DOCX parsing runs in a resource-limited worker with a hard timeout; images, legacy DOC, scanned PDF without a text layer, protected PDF and extraction failures remain fail-closed. No automatic OCR is used and no attachment body or extracted text is persisted by this application.
 
 Do not implement legal-agent business logic directly here. Changes must originate in SAN, pass SAN CI, then be snapshotted again with a new exact commit pin.
 
@@ -59,3 +59,10 @@ SAN PR #208 keeps the deterministic legal-consistency gate fail-closed but adds 
 ## Assistant-history authority provenance
 
 SAN PR #210 closes a citation-provenance loophole: when public research is OFF, legal authority identifiers found only in prior assistant/model responses no longer count as source authority. Only the current user message, prior user-role messages and readable user-supplied text attachments can establish pre-existing authority provenance. This prevents a hallucinated citation from laundering itself into later turns.
+
+
+## Local PDF/DOCX extraction
+
+SAN PR #214 adds governed local document extraction for the Groq text-only path. `pdfjs-dist 6.3.289` extracts embedded text from PDF bytes and `mammoth 1.12.3` extracts raw DOCX text. Binary parsing runs in an isolated Node worker with bounded memory, page/text limits and a hard timeout. The build executes an embedded TXT/PDF/DOCX runtime smoke before the image is accepted.
+
+No secondary extraction service or automatic OCR is introduced. Image-only/scanned PDFs, password-protected PDFs, legacy DOC and unsupported inputs fail closed. Extracted text is request-memory-only and can establish authority provenance exactly as other user-supplied readable text.
