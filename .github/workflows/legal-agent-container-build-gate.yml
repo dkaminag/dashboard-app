@@ -1,0 +1,48 @@
+name: Legal Agent Container Build Gate
+
+on:
+  pull_request:
+    paths:
+      - "legal-agent-cloud-runtime/**"
+      - ".github/workflows/legal-agent-container-build-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legal-agent-container-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout dashboard snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify required snapshot files exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f legal-agent-cloud-runtime/systems/legal-agent-cloud/document-extract.mjs
+          test -f legal-agent-cloud-runtime/systems/legal-agent-cloud/document-extract-worker.mjs
+          test -f legal-agent-cloud-runtime/systems/legal-agent-cloud/document-extract-smoke.mjs
+          test -f legal-agent-cloud-runtime/systems/legal-agent-cloud/package.json
+          test -f legal-agent-cloud-runtime/Dockerfile
+
+      - name: Build Legal Agent container snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build             --tag bp-legal-agent-snapshot-gate:${GITHUB_SHA::12}             legal-agent-cloud-runtime
+          docker image inspect             bp-legal-agent-snapshot-gate:${GITHUB_SHA::12}             --format 'built_image_id={{.Id}}'
+
+      - name: Remove local validation image
+        if: always()
+        shell: bash
+        run: |
+          docker image rm -f bp-legal-agent-snapshot-gate:${GITHUB_SHA::12} >/dev/null 2>&1 || true
