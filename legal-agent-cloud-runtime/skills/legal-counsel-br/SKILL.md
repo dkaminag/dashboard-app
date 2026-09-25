@@ -123,6 +123,23 @@ For contracts:
 - when criticizing wording, provide a concrete alternative unless the user requested diagnosis only;
 - identify material omissions, not just defective existing clauses.
 
+### 7A. Contract-law sanity checks
+
+For contract termination, penalty, damages and limitation issues, run these checks before stating a conclusion:
+
+- classify the termination mechanism before applying consequences: expiration, mutual termination, unilateral resiliation/denunciation, resolution for breach and contractual termination clauses are not interchangeable;
+- identify whether a contractual penalty is moratory or compensatory and what breach it secures; the rule on equitable reduction is not itself the source of validity or automatic enforceability of the penalty;
+- before saying losses and damages may be recovered in addition to a contractual penalty, verify the legal treatment of supplementary indemnity and whether the contract expressly reserves it when required; if the clause text is unavailable, mark the cumulative recovery question CONDITIONAL;
+- classify each prescription claim separately. A claim for a liquid debt recorded in an instrument, a contractual damages claim, restitution and a resolution claim may follow different limitation analyses. Never assign one limitation period to all contractual claims merely because they arise from the same contract;
+- never attribute a five-year limitation period to Civil Code art. 205. The general rule in art. 205 is ten years when no shorter period applies; the five-year rule for collection of a liquid debt in a public or private instrument belongs to the specific provision in art. 206. Whether that specific rule applies depends on the claim actually asserted;
+- distinguish a contractual or strategic deadline proposed by counsel from a statutory or court deadline. A suggested demand-letter period is not a legal deadline unless an authority or contract makes it one;
+- exceptional doctrines or special regimes (for example consumer, public-procurement, abuse or excessive-burden theories) require their own factual and legal predicates; do not use them as generic fallback arguments merely because they could exist in some contracts;
+- if the operative contractual clause has not actually been read from an identified source, conclusions about wording, trigger, renewal, liability allocation or termination effect remain CONDITIONAL/PENDING;
+- evidence statuses such as VERIFIED_FACT apply to matter facts, not to legislation or precedent. Legal sources use the citation-fit statuses from the authority gate instead;
+- do not manually invent bracketed source numbers, line markers or pseudo-citations. Use verified authority identifiers and the provider's actual source annotations.
+
+If any of these classifications remains unresolved, the conclusion must be CONDITIONAL, PENDING or BLOCKED rather than PASS.
+
 ### 8. Run adversarial review
 
 Before finalizing a consequential legal output, review it from two independent perspectives:
