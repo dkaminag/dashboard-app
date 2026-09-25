@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `82459da34ca4719c10d6fb666f2d6188702350cf`
+- commit: `d6bbd031b5ef1fc5499390b190636f61ea48caeb`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -37,3 +37,10 @@ SAN PR #198 makes the current strict node-postgres behavior explicit before the 
 SAN PR #199 prevents the observed `context_length_exceeded` path from receiving unbounded history/input. The runtime applies a conservative UTF-8 byte envelope before Groq dispatch, preserves the current user turn/readable attachment text without silent truncation, and drops only the oldest history while keeping one contiguous recent window.
 
 If the current turn alone exceeds the governed envelope, the request fails closed with `AI_CONTEXT_TOO_LARGE`. History omission is exposed only as non-substantive counts/budget metadata, and the legal-authority provenance gate uses the same effective history actually sent to the provider.
+
+
+## Contract reasoning hardening
+
+SAN PR #201 adds a fail-closed contract-law sanity layer after a synthetic early-termination opinion exposed material reasoning defects. The Supervisor now requires explicit classification of termination mechanism, penalty nature, supplementary-indemnity conditions and claim-specific prescription analysis. It also prohibits treating legal authorities as VERIFIED_FACT.
+
+The runtime rejects material contradictions such as describing Civil Code art. 205 as a five-year rule, unqualified cumulative penalty-plus-damages claims, and research-enabled answers that cite specific authority without provider-backed citations. These gates block unsafe output instead of silently passing it to the lawyer.
