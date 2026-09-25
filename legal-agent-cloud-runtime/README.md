@@ -5,13 +5,13 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `b604d2546760def219cd17735c0d7aeb143c76ee`
+- commit: `39ea99cb7953d53ba58f0c789f8f1af196ef0ac3`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
 The files in this directory are copied byte-for-byte from that exact SAN commit. `SNAPSHOT.json` records the matching Git blob identities.
 
-This refresh includes the governed multi-provider release certified by SAN PR #191: Groq is available as the default free-start provider with `openai/gpt-oss-120b`, OpenAI remains selectable, provider/model combinations are allowlisted, public web research remains OFF by default and per-turn opt-in, and provider-specific data-policy acknowledgment is required before inference.
+This refresh includes the governed multi-provider release certified by SAN PR #191 and sanitized provider diagnostics from SAN PR #192: Groq is available as the default free-start provider with `openai/gpt-oss-120b`, OpenAI remains selectable, provider/model combinations are allowlisted, public web research remains OFF by default and per-turn opt-in, and provider-specific data-policy acknowledgment is required before inference.
 
 Groq document handling is fail-closed: image and TXT/RTF inputs are supported by this wrapper, while PDF/DOC/DOCX are rejected under Groq until a governed local extraction path is added. No attachment body is persisted by this application.
 
