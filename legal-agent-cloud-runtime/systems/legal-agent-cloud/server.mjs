@@ -5,6 +5,13 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import {
+  ContextBudgetError,
+  DEFAULT_GROQ_INPUT_BUDGET_BYTES,
+  DEFAULT_GROQ_WEB_INPUT_BUDGET_BYTES,
+  boundedGroqInputBudget,
+  selectRecentHistoryWithinBudget,
+} from "./context-budget.mjs";
 import { buildPostgresPoolConfig } from "./pg-config.mjs";
 
 const { Pool } = pg;
@@ -37,6 +44,14 @@ const GROQ_MAX_OUTPUT_TOKENS =
   Number.isInteger(requestedGroqMaxOutput) && requestedGroqMaxOutput >= 1024 && requestedGroqMaxOutput <= 8192
     ? requestedGroqMaxOutput
     : 4096;
+const GROQ_MAX_INPUT_BYTES = boundedGroqInputBudget(
+  process.env.LEGAL_GROQ_MAX_INPUT_BYTES,
+  DEFAULT_GROQ_INPUT_BUDGET_BYTES,
+);
+const GROQ_WEB_INPUT_BYTES = boundedGroqInputBudget(
+  process.env.LEGAL_GROQ_WEB_INPUT_BYTES,
+  DEFAULT_GROQ_WEB_INPUT_BUDGET_BYTES,
+);
 const PASSWORD_PEPPER = process.env.LEGAL_PASSWORD_PEPPER || "";
 const SESSION_TTL_HOURS = Math.min(Math.max(Number(process.env.LEGAL_SESSION_TTL_HOURS || 12), 1), 168);
 const MAX_JSON_BYTES = 24 * 1024 * 1024;
@@ -555,6 +570,26 @@ async function listMessages(userId, threadId, limit = 100) {
   }));
 }
 
+async function listRecentMessages(userId, threadId, limit = HISTORY_MESSAGE_LIMIT) {
+  const ownership = await getThread(userId, threadId);
+  if (!ownership) return null;
+  const result = await pool.query(
+    `SELECT id, role, ciphertext, iv, tag, metadata, created_at
+     FROM legal_agent_messages
+     WHERE thread_id=$1
+     ORDER BY created_at DESC, id DESC
+     LIMIT $2`,
+    [threadId, limit],
+  );
+  return result.rows.reverse().map((row) => ({
+    id: row.id,
+    role: row.role,
+    text: decryptText(row),
+    metadata: row.metadata || {},
+    createdAt: row.created_at,
+  }));
+}
+
 async function saveMessage(threadId, role, body, metadata = {}) {
   const enc = encryptText(body);
   const id = uuid();
@@ -715,7 +750,11 @@ async function callAI({ history, message, files, mode, webSearch }) {
     throw error;
   }
 
+  const instructions = cloudDeveloperPrompt(mode, webSearch);
   let input;
+  let authorityHistory = history.slice(-HISTORY_MESSAGE_LIMIT);
+  let context = null;
+
   if (provider.name === "groq") {
     let groqMessage = message;
     for (const file of files) {
@@ -732,14 +771,42 @@ async function callAI({ history, message, files, mode, webSearch }) {
       }
       groqMessage += `\n\n[Anexo local: ${file.name}]\n${localText}\n[Fim do anexo]`;
     }
-    input = history.slice(-HISTORY_MESSAGE_LIMIT).map((item) => ({
+
+    const budgetBytes = webSearch ? GROQ_WEB_INPUT_BYTES : GROQ_MAX_INPUT_BYTES;
+    let budget;
+    try {
+      budget = selectRecentHistoryWithinBudget({
+        history: authorityHistory,
+        instructions,
+        currentMessage: groqMessage,
+        budgetBytes,
+      });
+    } catch (error) {
+      if (error instanceof ContextBudgetError) {
+        error.statusCode = 413;
+        throw error;
+      }
+      throw error;
+    }
+
+    authorityHistory = budget.history;
+    context = {
+      profile: webSearch ? "groq-web" : "groq",
+      historyIncluded: budget.historyIncluded,
+      historyOmitted: budget.historyOmitted,
+      inputBytes: budget.inputBytes,
+      budgetBytes: budget.budgetBytes,
+      currentTurnTruncated: false,
+    };
+
+    input = authorityHistory.map((item) => ({
       role: item.role,
       content: item.text,
     }));
     input.push({ role: "user", content: groqMessage });
   } else {
     input = [];
-    for (const item of history.slice(-HISTORY_MESSAGE_LIMIT)) {
+    for (const item of authorityHistory) {
       input.push({
         role: item.role,
         content: [{ type: "input_text", text: item.text }],
@@ -768,7 +835,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
   const body = {
     model: provider.model,
     reasoning: { effort: provider.name === "groq" ? GROQ_REASONING_EFFORT : REASONING_EFFORT },
-    instructions: cloudDeveloperPrompt(mode, webSearch),
+    instructions,
     input,
   };
   if (provider.name === "groq") body.max_output_tokens = GROQ_MAX_OUTPUT_TOKENS;
@@ -813,7 +880,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
 
   const hasOpaqueAttachment = files.some((file) => !TEXT_ATTACHMENT_MIME.has(file.mime));
   if (!webSearch && !hasOpaqueAttachment) {
-    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, history, message, files);
+    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, authorityHistory, message, files);
     if (unverifiedAuthorities.length) {
       const error = new Error("AI_AUTHORITY_VERIFICATION_REQUIRED");
       error.statusCode = 409;
@@ -837,6 +904,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
           totalTokens: payload.usage.total_tokens ?? null,
         }
       : null,
+    context,
   };
 }
 async function serveStatic(req, res, pathname) {
@@ -1095,7 +1163,7 @@ async function route(req, res) {
       return;
     }
 
-    const previous = await listMessages(user.id, thread.id, HISTORY_MESSAGE_LIMIT);
+    const previous = await listRecentMessages(user.id, thread.id, HISTORY_MESSAGE_LIMIT);
     const history = (previous || []).map((item) => ({ role: item.role, text: item.text }));
     const userMessageId = await saveMessage(thread.id, "user", message, {
       mode,
@@ -1120,6 +1188,7 @@ async function route(req, res) {
         model: answer.model,
         citations: answer.citations,
         usage: answer.usage,
+        context: answer.context,
       });
       await audit(user.id, "legal-agent-response", {
         threadRef: sha256(thread.id).slice(0, 16),
@@ -1132,6 +1201,7 @@ async function route(req, res) {
         providerResponseRef: answer.responseId ? sha256(answer.responseId).slice(0, 16) : null,
         latencyMs: Date.now() - started,
         usage: answer.usage,
+        context: answer.context,
       });
       json(res, 200, {
         userMessageId,
@@ -1141,6 +1211,7 @@ async function route(req, res) {
         provider: answer.provider,
         model: answer.model,
         usage: answer.usage,
+        context: answer.context,
       });
     } catch (error) {
       const diagnostic = {
@@ -1149,6 +1220,10 @@ async function route(req, res) {
         mode,
         webSearch,
         latencyMs: Date.now() - started,
+        contextInputBytes: error.inputBytes ?? null,
+        contextBudgetBytes: error.budgetBytes ?? null,
+        historyIncluded: error.historyIncluded ?? null,
+        historyOmitted: error.historyOmitted ?? null,
       };
       await audit(user.id, "legal-agent-error", {
         threadRef: sha256(thread.id).slice(0, 16),
@@ -1164,6 +1239,15 @@ async function route(req, res) {
         providerStatus: error.providerStatus || undefined,
         providerCode: error.providerCode || undefined,
         authorityCount: error.authorityCount || undefined,
+        context: error.code === "AI_CONTEXT_TOO_LARGE"
+          ? {
+              inputBytes: error.inputBytes,
+              budgetBytes: error.budgetBytes,
+              historyIncluded: error.historyIncluded,
+              historyOmitted: error.historyOmitted,
+              currentTurnTruncated: false,
+            }
+          : undefined,
       });
     }
     return;

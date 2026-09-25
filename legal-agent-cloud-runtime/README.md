@@ -5,13 +5,13 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `069c138f3580284004c43e25567f14d6aeeb8782`
+- commit: `82459da34ca4719c10d6fb666f2d6188702350cf`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
 The files in this directory are copied byte-for-byte from that exact SAN commit. `SNAPSHOT.json` records the matching Git blob identities.
 
-This refresh includes the governed multi-provider release from SAN PR #191, sanitized provider diagnostics from SAN PR #192, the Groq GPT-OSS text-message compatibility fix from SAN PR #193, the bounded Groq reasoning/output profile from SAN PR #195, the fail-closed legal-authority provenance gate from SAN PR #196, and PostgreSQL SSL-mode normalization from SAN PR #198. Groq remains the default free-start provider with `openai/gpt-oss-120b`, OpenAI remains selectable, provider/model combinations are allowlisted, public web research remains OFF by default and per-turn opt-in, and provider-specific data-policy acknowledgment is required before inference.
+This refresh includes the governed multi-provider release from SAN PR #191, sanitized provider diagnostics from SAN PR #192, the Groq GPT-OSS text-message compatibility fix from SAN PR #193, the bounded Groq reasoning/output profile from SAN PR #195, the fail-closed legal-authority provenance gate from SAN PR #196, PostgreSQL SSL-mode normalization from SAN PR #198, and deterministic Groq input-context budgeting from SAN PR #199.
 
 Groq free-tier inference uses medium reasoning with a 4096-token output budget. Groq GPT-OSS is treated as text-only in this runtime: plain-text messages use Groq's documented string-content contract; TXT/RTF are decoded locally in-memory and appended to the message; image/PDF/DOC/DOCX inputs fail closed until a governed local extraction/conversion path is added. No attachment body is persisted by this application.
 
@@ -30,3 +30,10 @@ When public research is OFF, the runtime now blocks newly generated specific leg
 ## PostgreSQL SSL-mode normalization
 
 SAN PR #198 makes the current strict node-postgres behavior explicit before the announced pg/pg-connection-string compatibility change: URL `sslmode=prefer`, `require` and `verify-ca` are normalized to `verify-full`. The legacy `LEGAL_PG_SSL` fallback applies only when the URL carries no `sslmode`. Database URLs and credentials are never logged by this normalization path.
+
+
+## Groq input context budget
+
+SAN PR #199 prevents the observed `context_length_exceeded` path from receiving unbounded history/input. The runtime applies a conservative UTF-8 byte envelope before Groq dispatch, preserves the current user turn/readable attachment text without silent truncation, and drops only the oldest history while keeping one contiguous recent window.
+
+If the current turn alone exceeds the governed envelope, the request fails closed with `AI_CONTEXT_TOO_LARGE`. History omission is exposed only as non-substantive counts/budget metadata, and the legal-authority provenance gate uses the same effective history actually sent to the provider.
