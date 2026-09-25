@@ -37,6 +37,7 @@ const errorMessages = {
   AI_PROVIDER_FILE_UNSUPPORTED: "No modo Groq, envie imagens ou arquivos TXT/RTF. PDF/DOC/DOCX ainda exigem OpenAI ou conversão local antes do envio.",
   AI_PROVIDER_TEXT_FILE_TOO_LARGE: "O arquivo de texto é grande demais para envio seguro pelo provedor selecionado.",
   AI_AUTHORITY_VERIFICATION_REQUIRED: "A resposta tentou usar autoridade jurídica específica sem fonte verificável. Ative ‘Pesquisar fontes públicas atuais’ ou forneça a fonte no texto/anexo.",
+  AI_CONTEXT_TOO_LARGE: "A mensagem, os anexos ou o contexto recente são grandes demais para análise segura neste provedor. Reduza o conteúdo desta solicitação ou divida a análise em partes.",
   CURRENT_PASSWORD_INVALID: "A senha atual está incorreta.",
   CANNOT_DISABLE_SELF: "Você não pode desativar sua própria conta.",
 };
@@ -184,6 +185,12 @@ function messageNode(message) {
   if (metadata.fileCount) {
     const tag = document.createElement("span");
     tag.textContent = `${metadata.fileCount} anexo(s)`;
+    meta.append(tag);
+  }
+  if (message.role === "assistant" && metadata.context?.historyOmitted > 0) {
+    const tag = document.createElement("span");
+    tag.textContent = `Contexto: ${metadata.context.historyOmitted} msg. antiga(s) omitida(s)`;
+    tag.title = "O histórico mais recente foi priorizado para respeitar o limite seguro do provedor; a mensagem atual não foi truncada.";
     meta.append(tag);
   }
   if (meta.childNodes.length) block.append(meta);
