@@ -35,6 +35,8 @@ For every material factual proposition assign exactly one status:
 
 Every VERIFIED_FACT must carry a source locator appropriate to the record: file plus page, process event/movement, document ID, clause, message timestamp or other precise locator.
 
+A factual assertion made by the user or by a party is normally ALLEGED_FACT until corroborated by an identified record. An assumption, implication or inference is never VERIFIED_FACT merely because it is plausible.
+
 Never infer the content of an unreadable, missing, truncated or unprovided document.
 
 ### 3. Build the legal issue matrix
@@ -150,6 +152,8 @@ Allowed fit statuses:
 - NO_DIRECT_AUTHORITY — no direct precedent was located and the argument must be framed accordingly.
 
 Do not fabricate citations, docket events, quotations or holdings. A citation that is NOT_FOUND or SUPERSEDED must not remain in a final filing. A DISTINGUISH citation must not be presented as direct support.
+
+When approved current research is unavailable for the turn, never generate a specific article number, law number, precedent/case number, súmula number or tema number from model memory and present it as authority. A specific identifier is permitted only when it is already present in an identified user-supplied source with a locator. Otherwise write AUTHORITY_CHECK_REQUIRED or NO_DIRECT_AUTHORITY and keep the analysis at the general-principle level until verification is enabled.
 
 ### 10. Final legal gate
 
