@@ -13,6 +13,7 @@ import {
   selectRecentHistoryWithinBudget,
 } from "./context-budget.mjs";
 import { buildPostgresPoolConfig } from "./pg-config.mjs";
+import { findLegalConsistencyViolation as executeLegalConsistencyGate } from "./legal-consistency.mjs";
 
 const { Pool } = pg;
 const scryptAsync = promisify(crypto.scrypt);
@@ -711,41 +712,8 @@ function findUnverifiedAuthorityIdentifiers(answer, history, message, files) {
 }
 
 function findLegalConsistencyViolation(answer) {
-  const normalized = normalizedAuthorityText(answer);
-  const segments = normalized.split(/\n{2,}|(?<=[.!?])\s+/);
-
-  for (const segment of segments) {
-    const hasArt205 = /\bart\.?\s*205\b/.test(segment);
-    const hasFiveYears = /\b(?:5|cinco)\s+anos\b/.test(segment);
-    const explicitNegation = /\b(?:nao|nunca)\b.{0,45}\b(?:5|cinco)\s+anos\b/.test(segment);
-    if (hasArt205 && hasFiveYears && !explicitNegation) {
-      return "cc_art_205_five_year_mismatch";
-    }
-  }
-
-  const mentionsPenalty = /\b(?:multa|clausula penal)\b/.test(normalized);
-  const mentionsDamages = /\bperdas e danos\b|\blucros cessantes\b/.test(normalized);
-  const claimsCumulative =
-    /\b(?:alem|cumul|somad)[a-z]*\b.{0,80}\b(?:multa|clausula penal|perdas e danos|lucros cessantes)\b/.test(normalized) ||
-    /\b(?:multa|clausula penal)\b.{0,100}\b(?:alem|cumul|somad)[a-z]*\b.{0,80}\b(?:perdas e danos|lucros cessantes)\b/.test(normalized);
-  const addressesSupplementalRule =
-    /\bart\.?\s*416\b/.test(normalized) ||
-    /\bindenizacao suplementar\b/.test(normalized) ||
-    /\bprevisao contratual expressa\b/.test(normalized) ||
-    /\breserva contratual expressa\b/.test(normalized) ||
-    /\bnatureza (?:moratoria|compensatoria)\b/.test(normalized);
-  if (mentionsPenalty && mentionsDamages && claimsCumulative && !addressesSupplementalRule) {
-    return "penalty_supplemental_damages_unqualified";
-  }
-
-  const lawAsFact =
-    /\bfundamento legal\b.{0,160}\bverified_fact\b/.test(normalized) ||
-    /\b(?:art|lei|sumula|tema)\b.{0,120}\bverified_fact\b/.test(normalized);
-  if (lawAsFact) return "authority_mislabeled_as_verified_fact";
-
-  return null;
+  return executeLegalConsistencyGate(answer);
 }
-
 function cloudDeveloperPrompt(mode, webSearchEnabled) {
   return `${legalSkill}
 
