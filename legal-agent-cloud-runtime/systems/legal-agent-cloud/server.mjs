@@ -628,6 +628,57 @@ function extractCitations(payload) {
   return citations.slice(0, 30);
 }
 
+function normalizedAuthorityText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function extractAuthorityIdentifiers(textValue) {
+  const text = String(textValue || "");
+  const patterns = [
+    /\b(?:s[uú]mula|tema)\s*(?:n[ºo.]?\s*)?\d{1,6}\b/giu,
+    /\b(?:AgRg|AgInt|AREsp|REsp|RMS|HC|RE|ADI|ADC|ADPF)\s*(?:no\s*)?(?:REsp|AREsp|RMS|HC|RE)?\s*[\d.]+(?:\/[A-Z]{2})?\b/giu,
+    /\b(?:art|arts)\.\s*\d+[A-Za-zº°-]*(?:\s*[–-]\s*\d+[A-Za-zº°-]*)?/giu,
+    /\bLei\s*(?:n[ºo.]?\s*)?\d[\d.]*\/?\d{0,4}\b/giu,
+  ];
+  const seen = new Set();
+  const out = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const raw = String(match[0] || "").trim();
+      const key = normalizedAuthorityText(raw);
+      if (!raw || seen.has(key)) continue;
+      seen.add(key);
+      out.push(raw);
+    }
+  }
+  return out;
+}
+
+function authoritySourceText(history, message, files) {
+  const parts = [String(message || "")];
+  for (const item of history || []) parts.push(String(item?.text || ""));
+  for (const file of files || []) {
+    if (!TEXT_ATTACHMENT_MIME.has(file.mime)) continue;
+    try {
+      parts.push(Buffer.from(file.data, "base64").toString("utf8"));
+    } catch {
+      // Fail closed elsewhere on invalid files; do not broaden authority provenance here.
+    }
+  }
+  return normalizedAuthorityText(parts.join("\n"));
+}
+
+function findUnverifiedAuthorityIdentifiers(answer, history, message, files) {
+  const sourceText = authoritySourceText(history, message, files);
+  return extractAuthorityIdentifiers(answer).filter(
+    (identifier) => !sourceText.includes(normalizedAuthorityText(identifier)),
+  );
+}
+
 function cloudDeveloperPrompt(mode, webSearchEnabled) {
   return `${legalSkill}
 
@@ -644,12 +695,14 @@ Mandatory execution rules:
 - Never include a client's name, CPF, CNPJ, email, phone, exact process number, privileged strategy, or other matter-specific identifier in a public web-search query.
 - Web results are research evidence, not the matter Source of Truth.
 - If a legal authority cannot be verified, mark it NOT_FOUND or NO_DIRECT_AUTHORITY rather than guessing.
+- When public web research is DISABLED, do not introduce any specific article number, law number, precedent/case number, súmula number or tema number from model memory. A specific authority may appear only when that exact identifier was supplied in the user's current/history text or a readable text attachment. Otherwise state AUTHORITY_CHECK_REQUIRED and reason only at the general-principle level.
+- A user's factual assertion is ALLEGED_FACT unless an identified independent record supports VERIFIED_FACT. "Implicit", assumed or inferred information is never VERIFIED_FACT.
 - Distinguish fact, allegation, inference, law, application, risk and requested relief.
 - Before a consequential final answer, perform an adversarial check from judge/decision-maker and opposing-party perspectives.
 - Never claim that a filing, protocol, payment, court communication, or external action occurred unless explicit evidence says it did.
 - Do not provide hidden chain-of-thought. Give concise legal reasoning, supporting authorities, risks, blockers and next actions.
 - Matter mode for this turn: ${mode}.
-- Public web research for this turn: ${webSearchEnabled ? "ENABLED under the privacy restrictions above" : "DISABLED; explicitly flag any freshness-dependent point that still requires verification"}.
+- Public web research for this turn: ${webSearchEnabled ? "ENABLED under the privacy restrictions above" : "DISABLED; do not cite new specific legal authorities from model memory; use AUTHORITY_CHECK_REQUIRED for freshness-dependent law or precedent"}.
 `;
 }
 
@@ -761,6 +814,20 @@ async function callAI({ history, message, files, mode, webSearch }) {
       `empty_response:${payload?.status || "unknown"}:${payload?.incomplete_details?.reason || "no_reason"}:${outputTypes || "no_output"}`;
     throw error;
   }
+
+  const hasOpaqueAttachment = files.some((file) => !TEXT_ATTACHMENT_MIME.has(file.mime));
+  if (!webSearch && !hasOpaqueAttachment) {
+    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, history, message, files);
+    if (unverifiedAuthorities.length) {
+      const error = new Error("AI_AUTHORITY_VERIFICATION_REQUIRED");
+      error.statusCode = 409;
+      error.providerStatus = response.status;
+      error.providerCode = "unverified_authority_without_research";
+      error.authorityCount = unverifiedAuthorities.length;
+      throw error;
+    }
+  }
+
   return {
     text: answer,
     citations: extractCitations(payload),
@@ -1100,6 +1167,7 @@ async function route(req, res) {
         error: error.message || "LEGAL_AGENT_FAILED",
         providerStatus: error.providerStatus || undefined,
         providerCode: error.providerCode || undefined,
+        authorityCount: error.authorityCount || undefined,
       });
     }
     return;
