@@ -14,6 +14,7 @@ import {
 } from "./context-budget.mjs";
 import { buildPostgresPoolConfig } from "./pg-config.mjs";
 import { findLegalConsistencyViolation as executeLegalConsistencyGate } from "./legal-consistency.mjs";
+import { extractAttachmentText, TEXT_ATTACHMENT_MIME } from "./document-extract.mjs";
 
 const { Pool } = pg;
 const scryptAsync = promisify(crypto.scrypt);
@@ -63,7 +64,6 @@ const MAX_MESSAGE_CHARS = 80_000;
 const HISTORY_MESSAGE_LIMIT = 18;
 const COOKIE_NAME = "bp_legal_session";
 const USERNAME_RE = /^[a-z0-9._@+-]{3,120}$/;
-const TEXT_ATTACHMENT_MIME = new Set(["text/plain", "text/rtf", "application/rtf"]);
 const MAX_GROQ_TEXT_ATTACHMENT_CHARS = 220_000;
 const MODE_SET = new Set([
   "AUTOS",
@@ -697,6 +697,10 @@ function authoritySourceText(history, message, files) {
     parts.push(String(item?.text || ""));
   }
   for (const file of files || []) {
+    if (typeof file?.extractedText === "string" && file.extractedText) {
+      parts.push(file.extractedText);
+      continue;
+    }
     if (!TEXT_ATTACHMENT_MIME.has(file.mime)) continue;
     try {
       parts.push(Buffer.from(file.data, "base64").toString("utf8"));
@@ -835,24 +839,22 @@ async function callAI({ history, message, files, mode, webSearch }) {
   const instructions = cloudDeveloperPrompt(mode, webSearch);
   let input;
   let authorityHistory = history.slice(-HISTORY_MESSAGE_LIMIT);
+  let authorityFiles = files;
   let context = null;
 
   if (provider.name === "groq") {
     let groqMessage = message;
+    const locallyReadableFiles = [];
+    let locallyExtractedDocuments = 0;
     for (const file of files) {
-      if (!TEXT_ATTACHMENT_MIME.has(file.mime)) {
-        const error = new Error("AI_PROVIDER_FILE_UNSUPPORTED");
-        error.statusCode = 400;
-        throw error;
-      }
-      const localText = Buffer.from(file.data, "base64").toString("utf8");
-      if (localText.length > MAX_GROQ_TEXT_ATTACHMENT_CHARS) {
-        const error = new Error("AI_PROVIDER_TEXT_FILE_TOO_LARGE");
-        error.statusCode = 400;
-        throw error;
-      }
-      groqMessage += `\n\n[Anexo local: ${file.name}]\n${localText}\n[Fim do anexo]`;
+      const extracted = await extractAttachmentText(file, {
+        maxChars: MAX_GROQ_TEXT_ATTACHMENT_CHARS,
+      });
+      if (!TEXT_ATTACHMENT_MIME.has(file.mime)) locallyExtractedDocuments += 1;
+      locallyReadableFiles.push({ ...file, extractedText: extracted.text });
+      groqMessage += `\n\n[Anexo local: ${file.name}]\n${extracted.text}\n[Fim do anexo]`;
     }
+    authorityFiles = locallyReadableFiles;
 
     const budgetBytes = webSearch ? GROQ_WEB_INPUT_BYTES : GROQ_MAX_INPUT_BYTES;
     let budget;
@@ -879,6 +881,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
       inputBytes: budget.inputBytes,
       budgetBytes: budget.budgetBytes,
       currentTurnTruncated: false,
+      locallyExtractedDocuments,
     };
 
     input = authorityHistory.map((item) => ({
@@ -995,9 +998,11 @@ async function callAI({ history, message, files, mode, webSearch }) {
     throw error;
   }
 
-  const hasOpaqueAttachment = files.some((file) => !TEXT_ATTACHMENT_MIME.has(file.mime));
+  const hasOpaqueAttachment = authorityFiles.some(
+    (file) => typeof file?.extractedText !== "string" && !TEXT_ATTACHMENT_MIME.has(file.mime),
+  );
   if (!webSearch && !hasOpaqueAttachment) {
-    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, authorityHistory, message, files);
+    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, authorityHistory, message, authorityFiles);
     if (unverifiedAuthorities.length) {
       const error = new Error("AI_AUTHORITY_VERIFICATION_REQUIRED");
       error.statusCode = 409;
