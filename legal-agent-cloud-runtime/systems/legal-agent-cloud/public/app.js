@@ -36,6 +36,7 @@ const errorMessages = {
   INVALID_MODEL: "Modelo inválido para o provedor selecionado.",
   AI_PROVIDER_FILE_UNSUPPORTED: "No modo Groq, envie imagens ou arquivos TXT/RTF. PDF/DOC/DOCX ainda exigem OpenAI ou conversão local antes do envio.",
   AI_PROVIDER_TEXT_FILE_TOO_LARGE: "O arquivo de texto é grande demais para envio seguro pelo provedor selecionado.",
+  AI_AUTHORITY_VERIFICATION_REQUIRED: "A resposta tentou usar autoridade jurídica específica sem fonte verificável. Ative ‘Pesquisar fontes públicas atuais’ ou forneça a fonte no texto/anexo.",
   CURRENT_PASSWORD_INVALID: "A senha atual está incorreta.",
   CANNOT_DISABLE_SELF: "Você não pode desativar sua própria conta.",
 };
