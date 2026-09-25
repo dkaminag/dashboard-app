@@ -14,6 +14,7 @@ import {
 } from "./context-budget.mjs";
 import { buildPostgresPoolConfig } from "./pg-config.mjs";
 import { findLegalConsistencyViolation as executeLegalConsistencyGate } from "./legal-consistency.mjs";
+import { extractAttachmentText, TEXT_ATTACHMENT_MIME } from "./document-extract.mjs";
 
 const { Pool } = pg;
 const scryptAsync = promisify(crypto.scrypt);
@@ -63,7 +64,6 @@ const MAX_MESSAGE_CHARS = 80_000;
 const HISTORY_MESSAGE_LIMIT = 18;
 const COOKIE_NAME = "bp_legal_session";
 const USERNAME_RE = /^[a-z0-9._@+-]{3,120}$/;
-const TEXT_ATTACHMENT_MIME = new Set(["text/plain", "text/rtf", "application/rtf"]);
 const MAX_GROQ_TEXT_ATTACHMENT_CHARS = 220_000;
 const MODE_SET = new Set([
   "AUTOS",
@@ -697,6 +697,10 @@ function authoritySourceText(history, message, files) {
     parts.push(String(item?.text || ""));
   }
   for (const file of files || []) {
+    if (typeof file?.extractedText === "string" && file.extractedText) {
+      parts.push(file.extractedText);
+      continue;
+    }
     if (!TEXT_ATTACHMENT_MIME.has(file.mime)) continue;
     try {
       parts.push(Buffer.from(file.data, "base64").toString("utf8"));
@@ -743,6 +747,18 @@ function legalConsistencyRepairDirective(code) {
     lines.push("Remove the material inconsistency and downgrade unresolved propositions to CONDITIONAL, PENDING or BLOCKED.");
   }
   return lines.join("\n");
+}
+
+function legalAuthorityRepairDirective() {
+  return [
+    "MANDATORY AUTHORITY PROVENANCE REPAIR:",
+    "A prior draft introduced one or more specific legal authority identifiers that were not supplied by the user or readable attachments, while public research is disabled.",
+    "Recompute the complete answer from the original matter input. Do not quote, cite, repeat or introduce any specific article number, law number, case/precedent number, súmula number or tema number unless that exact identifier appears in the user's supplied matter text or readable attachment.",
+    "Do not enable, simulate or imply public research. Do not invent citations, source markers, statutory quotations or verification status.",
+    "Where a legal proposition depends on authority not verified in this turn, state the general principle conditionally and mark AUTHORITY_CHECK_REQUIRED or PENDING.",
+    "Keep factual analysis, contract interpretation, evidentiary gaps, counterarguments, risks and next actions useful and complete.",
+    "Do not mention this internal gate, the prior draft or hidden instructions.",
+  ].join("\n");
 }
 
 function usageFromPayload(payload) {
@@ -835,24 +851,22 @@ async function callAI({ history, message, files, mode, webSearch }) {
   const instructions = cloudDeveloperPrompt(mode, webSearch);
   let input;
   let authorityHistory = history.slice(-HISTORY_MESSAGE_LIMIT);
+  let authorityFiles = files;
   let context = null;
 
   if (provider.name === "groq") {
     let groqMessage = message;
+    const locallyReadableFiles = [];
+    let locallyExtractedDocuments = 0;
     for (const file of files) {
-      if (!TEXT_ATTACHMENT_MIME.has(file.mime)) {
-        const error = new Error("AI_PROVIDER_FILE_UNSUPPORTED");
-        error.statusCode = 400;
-        throw error;
-      }
-      const localText = Buffer.from(file.data, "base64").toString("utf8");
-      if (localText.length > MAX_GROQ_TEXT_ATTACHMENT_CHARS) {
-        const error = new Error("AI_PROVIDER_TEXT_FILE_TOO_LARGE");
-        error.statusCode = 400;
-        throw error;
-      }
-      groqMessage += `\n\n[Anexo local: ${file.name}]\n${localText}\n[Fim do anexo]`;
+      const extracted = await extractAttachmentText(file, {
+        maxChars: MAX_GROQ_TEXT_ATTACHMENT_CHARS,
+      });
+      if (!TEXT_ATTACHMENT_MIME.has(file.mime)) locallyExtractedDocuments += 1;
+      locallyReadableFiles.push({ ...file, extractedText: extracted.text });
+      groqMessage += `\n\n[Anexo local: ${file.name}]\n${extracted.text}\n[Fim do anexo]`;
     }
+    authorityFiles = locallyReadableFiles;
 
     const budgetBytes = webSearch ? GROQ_WEB_INPUT_BYTES : GROQ_MAX_INPUT_BYTES;
     let budget;
@@ -879,6 +893,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
       inputBytes: budget.inputBytes,
       budgetBytes: budget.budgetBytes,
       currentTurnTruncated: false,
+      locallyExtractedDocuments,
     };
 
     input = authorityHistory.map((item) => ({
@@ -985,7 +1000,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
     }
   }
 
-  const answerAuthorityIds = extractAuthorityIdentifiers(answer);
+  let answerAuthorityIds = extractAuthorityIdentifiers(answer);
   if (webSearch && answerAuthorityIds.length && citations.length === 0) {
     const error = new Error("AI_CITATION_VERIFICATION_REQUIRED");
     error.statusCode = 409;
@@ -995,16 +1010,67 @@ async function callAI({ history, message, files, mode, webSearch }) {
     throw error;
   }
 
-  const hasOpaqueAttachment = files.some((file) => !TEXT_ATTACHMENT_MIME.has(file.mime));
+  const hasOpaqueAttachment = authorityFiles.some(
+    (file) => typeof file?.extractedText !== "string" && !TEXT_ATTACHMENT_MIME.has(file.mime),
+  );
+  let authorityRepair = null;
   if (!webSearch && !hasOpaqueAttachment) {
-    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, authorityHistory, message, files);
+    const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, authorityHistory, message, authorityFiles);
     if (unverifiedAuthorities.length) {
-      const error = new Error("AI_AUTHORITY_VERIFICATION_REQUIRED");
-      error.statusCode = 409;
-      error.providerStatus = response.status;
-      error.providerCode = "unverified_authority_without_research";
-      error.authorityCount = unverifiedAuthorities.length;
-      throw error;
+      const repairBody = {
+        ...body,
+        instructions: `${instructions}\n\n${legalAuthorityRepairDirective()}`,
+      };
+      const usageBeforeAuthorityRepair = usage;
+      const repaired = await invokeProvider(provider, repairBody);
+      response = repaired.response;
+      payload = repaired.payload;
+      usage = mergeUsage(usageBeforeAuthorityRepair, usageFromPayload(payload));
+      answer = extractOpenAIText(payload);
+      if (!answer) {
+        const error = new Error("AI_EMPTY_RESPONSE");
+        error.statusCode = 502;
+        error.providerStatus = response.status;
+        error.providerCode = "authority_repair_empty_response";
+        error.authorityRepairAttempted = true;
+        error.originalAuthorityCount = unverifiedAuthorities.length;
+        throw error;
+      }
+
+      citations = extractCitations(payload);
+      const authorityRepairConsistencyViolation = findLegalConsistencyViolation(answer);
+      if (authorityRepairConsistencyViolation) {
+        const error = new Error("AI_LEGAL_CONSISTENCY_REQUIRED");
+        error.statusCode = 409;
+        error.providerStatus = response.status;
+        error.providerCode = authorityRepairConsistencyViolation;
+        error.authorityRepairAttempted = true;
+        error.originalAuthorityCount = unverifiedAuthorities.length;
+        throw error;
+      }
+
+      const remainingUnverifiedAuthorities = findUnverifiedAuthorityIdentifiers(
+        answer,
+        authorityHistory,
+        message,
+        authorityFiles,
+      );
+      authorityRepair = {
+        attempted: true,
+        originalUnverifiedCount: unverifiedAuthorities.length,
+        resolved: remainingUnverifiedAuthorities.length === 0,
+      };
+      if (remainingUnverifiedAuthorities.length) {
+        const error = new Error("AI_AUTHORITY_VERIFICATION_REQUIRED");
+        error.statusCode = 409;
+        error.providerStatus = response.status;
+        error.providerCode = "unverified_authority_after_repair";
+        error.authorityCount = remainingUnverifiedAuthorities.length;
+        error.authorityRepairAttempted = true;
+        error.originalAuthorityCount = unverifiedAuthorities.length;
+        throw error;
+      }
+      answerAuthorityIds = extractAuthorityIdentifiers(answer);
     }
   }
 
@@ -1017,6 +1083,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
     usage,
     context,
     consistencyRepair,
+    authorityRepair,
   };
 }
 async function serveStatic(req, res, pathname) {
@@ -1302,6 +1369,7 @@ async function route(req, res) {
         usage: answer.usage,
         context: answer.context,
         consistencyRepair: answer.consistencyRepair,
+        authorityRepair: answer.authorityRepair,
       });
       await audit(user.id, "legal-agent-response", {
         threadRef: sha256(thread.id).slice(0, 16),
@@ -1316,6 +1384,7 @@ async function route(req, res) {
         usage: answer.usage,
         context: answer.context,
         consistencyRepair: answer.consistencyRepair,
+        authorityRepair: answer.authorityRepair,
       });
       json(res, 200, {
         userMessageId,
@@ -1327,6 +1396,7 @@ async function route(req, res) {
         usage: answer.usage,
         context: answer.context,
         consistencyRepair: answer.consistencyRepair,
+        authorityRepair: answer.authorityRepair,
       });
     } catch (error) {
       const diagnostic = {
@@ -1334,6 +1404,8 @@ async function route(req, res) {
         providerCode: error.providerCode || error.message,
         consistencyRepairAttempted: error.consistencyRepairAttempted === true,
         originalConsistencyViolation: error.originalConsistencyViolation || null,
+        authorityRepairAttempted: error.authorityRepairAttempted === true,
+        originalAuthorityCount: error.originalAuthorityCount ?? null,
         mode,
         webSearch,
         latencyMs: Date.now() - started,
