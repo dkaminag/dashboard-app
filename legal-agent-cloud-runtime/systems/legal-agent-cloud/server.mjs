@@ -710,6 +710,42 @@ function findUnverifiedAuthorityIdentifiers(answer, history, message, files) {
   );
 }
 
+function findLegalConsistencyViolation(answer) {
+  const normalized = normalizedAuthorityText(answer);
+  const segments = normalized.split(/\n{2,}|(?<=[.!?])\s+/);
+
+  for (const segment of segments) {
+    const hasArt205 = /\bart\.?\s*205\b/.test(segment);
+    const hasFiveYears = /\b(?:5|cinco)\s+anos\b/.test(segment);
+    const explicitNegation = /\b(?:nao|nunca)\b.{0,45}\b(?:5|cinco)\s+anos\b/.test(segment);
+    if (hasArt205 && hasFiveYears && !explicitNegation) {
+      return "cc_art_205_five_year_mismatch";
+    }
+  }
+
+  const mentionsPenalty = /\b(?:multa|clausula penal)\b/.test(normalized);
+  const mentionsDamages = /\bperdas e danos\b|\blucros cessantes\b/.test(normalized);
+  const claimsCumulative =
+    /\b(?:alem|cumul|somad)[a-z]*\b.{0,80}\b(?:multa|clausula penal|perdas e danos|lucros cessantes)\b/.test(normalized) ||
+    /\b(?:multa|clausula penal)\b.{0,100}\b(?:alem|cumul|somad)[a-z]*\b.{0,80}\b(?:perdas e danos|lucros cessantes)\b/.test(normalized);
+  const addressesSupplementalRule =
+    /\bart\.?\s*416\b/.test(normalized) ||
+    /\bindenizacao suplementar\b/.test(normalized) ||
+    /\bprevisao contratual expressa\b/.test(normalized) ||
+    /\breserva contratual expressa\b/.test(normalized) ||
+    /\bnatureza (?:moratoria|compensatoria)\b/.test(normalized);
+  if (mentionsPenalty && mentionsDamages && claimsCumulative && !addressesSupplementalRule) {
+    return "penalty_supplemental_damages_unqualified";
+  }
+
+  const lawAsFact =
+    /\bfundamento legal\b.{0,160}\bverified_fact\b/.test(normalized) ||
+    /\b(?:art|lei|sumula|tema)\b.{0,120}\bverified_fact\b/.test(normalized);
+  if (lawAsFact) return "authority_mislabeled_as_verified_fact";
+
+  return null;
+}
+
 function cloudDeveloperPrompt(mode, webSearchEnabled) {
   return `${legalSkill}
 
@@ -729,6 +765,11 @@ Mandatory execution rules:
 - When public web research is DISABLED, do not introduce any specific article number, law number, precedent/case number, súmula number or tema number from model memory. A specific authority may appear only when that exact identifier was supplied in the user's current/history text or a readable text attachment. Otherwise state AUTHORITY_CHECK_REQUIRED and reason only at the general-principle level.
 - A user's factual assertion is ALLEGED_FACT unless an identified independent record supports VERIFIED_FACT. "Implicit", assumed or inferred information is never VERIFIED_FACT.
 - Distinguish fact, allegation, inference, law, application, risk and requested relief.
+- For contract termination, classify unilateral resiliation/denunciation separately from resolution for breach before assigning remedies.
+- For contractual penalties, classify the penalty's function and verify the supplementary-indemnity rule before allowing cumulative losses and damages.
+- For prescription, classify the exact claim before selecting a period; never describe Civil Code art. 205 as a five-year rule.
+- VERIFIED_FACT is reserved for matter facts; legislation and precedent use authority/citation-fit statuses, never VERIFIED_FACT.
+- Do not manually invent bracketed source numbers, line markers or pseudo-citations.
 - Before a consequential final answer, perform an adversarial check from judge/decision-maker and opposing-party perspectives.
 - Never claim that a filing, protocol, payment, court communication, or external action occurred unless explicit evidence says it did.
 - Do not provide hidden chain-of-thought. Give concise legal reasoning, supporting authorities, risks, blockers and next actions.
@@ -878,6 +919,26 @@ async function callAI({ history, message, files, mode, webSearch }) {
     throw error;
   }
 
+  const citations = extractCitations(payload);
+  const consistencyViolation = findLegalConsistencyViolation(answer);
+  if (consistencyViolation) {
+    const error = new Error("AI_LEGAL_CONSISTENCY_REQUIRED");
+    error.statusCode = 409;
+    error.providerStatus = response.status;
+    error.providerCode = consistencyViolation;
+    throw error;
+  }
+
+  const answerAuthorityIds = extractAuthorityIdentifiers(answer);
+  if (webSearch && answerAuthorityIds.length && citations.length === 0) {
+    const error = new Error("AI_CITATION_VERIFICATION_REQUIRED");
+    error.statusCode = 409;
+    error.providerStatus = response.status;
+    error.providerCode = "specific_authority_without_provider_citation";
+    error.authorityCount = answerAuthorityIds.length;
+    throw error;
+  }
+
   const hasOpaqueAttachment = files.some((file) => !TEXT_ATTACHMENT_MIME.has(file.mime));
   if (!webSearch && !hasOpaqueAttachment) {
     const unverifiedAuthorities = findUnverifiedAuthorityIdentifiers(answer, authorityHistory, message, files);
@@ -893,7 +954,7 @@ async function callAI({ history, message, files, mode, webSearch }) {
 
   return {
     text: answer,
-    citations: extractCitations(payload),
+    citations,
     provider: provider.name,
     model: provider.model,
     responseId: payload.id || null,
