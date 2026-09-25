@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `8249edb5674972fd1a0cebd7797f546734d80685`
+- commit: `d8c77da7cdf2223726538ccd20183e3f6e13c5c2`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -49,3 +49,8 @@ The runtime rejects material contradictions such as describing Civil Code art. 2
 ## Executable legal consistency gate
 
 SAN PR #202 replaces the provisional inline contract-consistency detector with a separately executable module used by production and by regression tests. The test suite now exercises actual bad/good examples, including the exact `art. 205` + five-year error that previously evaded detection because sentence splitting treated the abbreviation period as a boundary.
+
+
+## Bounded consistency self-repair
+
+SAN PR #208 keeps the deterministic legal-consistency gate fail-closed but adds one bounded regeneration pass for known material contradictions. A failed first draft is discarded, the original matter input is regenerated with a narrow correction directive, and the second draft must pass the same consistency, citation and authority gates. The repair never enables public research on its own and records only sanitized repair metadata plus aggregate token usage.
