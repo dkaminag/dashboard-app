@@ -23,13 +23,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout audited PJe-Calc source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: bragabarreto/pjecalc-agente
-          ref: 8a227464b907707c87173cb5e327b6afc4c09d70
-          path: _upstream/pjecalc-agente
-          persist-credentials: false
+      - name: Fetch audited PJe-Calc source without submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _upstream/pjecalc-agente
+          git -C _upstream/pjecalc-agente init
+          git -C _upstream/pjecalc-agente remote add origin https://github.com/bragabarreto/pjecalc-agente.git
+          git -C _upstream/pjecalc-agente -c submodule.recurse=false fetch --no-tags --depth=1 origin 8a227464b907707c87173cb5e327b6afc4c09d70
+          git -C _upstream/pjecalc-agente -c submodule.recurse=false checkout --detach FETCH_HEAD
 
       - name: Verify exact upstream source identity
         shell: bash
