@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `9a382348d6c2addba5ef73b987834503ee1c93d8`
+- commit: `aea2975387f606309cc59b079dc2aaefb555f76b`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -91,3 +91,8 @@ SAN PR #238 merged as `a39ca93ab0c1a2bc4bfecee31a31a18d1bd0a74c`. The bounded PD
 SAN PR #241 merged as `9a382348d6c2addba5ef73b987834503ee1c93d8`. It adds an opt-in startup certification using a fixed fictitious contract scenario and the same provider, legal-consistency and authority-provenance gates used by normal chat. The flag is disabled by default and the runtime logs only PASS/FAIL plus non-substantive provider/repair/usage metadata; generated answer text and credentials are never logged.
 
 The executable consistency gate now also rejects model-invented pseudo-citation markers, a PASS conclusion while material PENDING/BLOCKED/NOT_LOCATED/AUTHORITY_CHECK_REQUIRED dependencies remain, and use of the penalty-reduction rule as the source of validity/enforceability of a contractual penalty.
+
+
+## Groq rate-limit hardening
+
+SAN PR #245 merged as `aea2975387f606309cc59b079dc2aaefb555f76b`. The runtime now treats Groq HTTP 429 as an explicit provider-rate-limit condition, performs at most one retry only when Groq supplies a positive `retry-after` of 5 seconds or less, and otherwise returns `AI_PROVIDER_RATE_LIMITED` without masking the condition as a generic 503. The production startup synthetic smoke is disabled after release certification so cold starts do not consume free-tier quota.
