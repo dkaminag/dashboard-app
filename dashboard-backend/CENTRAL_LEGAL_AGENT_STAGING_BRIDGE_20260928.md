@@ -113,3 +113,26 @@ When explicitly enabled, it queries only aggregate counts in `central_juridica_v
 - session rows joinable server-side to active `lawyer` users.
 
 It emits no username, user id, session id/token/hash, password, MFA/TOTP material, database URL or row payload. Any absence of an active lawyer or joinable session fails closed. Default behavior is disabled/skipped.
+
+
+## Artificial deidentified fixture E2E
+
+The governed staging workflow now also executes
+`dashboard-backend/test-central-legal-agent-artificial-deidentified-e2e.mjs`.
+
+This is a **test-only artificial fixture** aligned to SAN deidentification gate
+`69957c87b657434b99e9f9b5a3a5805fa12bfdc7`
+(module blob `2a7d1bb1e36152dc375d50fa687fe46e0118f67c`, schema blob
+`1f04d9a6e74e3053bcaf8ee976519afaf1963bf8`).
+
+The fixture begins with fictitious CPF, CNPJ, CNJ process number, e-mail, phone,
+CEP and UUID values. The staging invocation receives only the artificial
+redacted form with placeholders. The E2E asserts that raw identifiers and raw
+source text do not appear in the transport payload, audit events or staging
+receipt.
+
+The bridge deliberately retains `data_mode=SYNTHETIC` for this exercise.
+Passing this test does not relabel an artificial fixture as a real deidentified
+matter and does not grant real-source, real-matter or production authority.
+Public research, files, filing, PJe-Calc export and external side effects remain
+disabled.
