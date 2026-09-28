@@ -13,6 +13,7 @@ const ENABLED = String(process.env.CJ_LEGAL_AGENT_STAGING_ENABLED || "").trim().
 const READY = ENABLED && ENVIRONMENT === "STAGING" && DATA_MODE === "SYNTHETIC";
 
 const auditEvents = [];
+let lastStagingEvidence = null;
 
 function headers() {
   return {
@@ -63,7 +64,7 @@ const transport = {
 
 async function runSynthetic() {
   const request = buildSyntheticStagingRequest();
-  return executeLegalAgentStagingBridge({
+  const result = await executeLegalAgentStagingBridge({
     request,
     operator: {
       authenticated: true,
@@ -79,6 +80,8 @@ async function runSynthetic() {
     auditSink,
     transport,
   });
+  lastStagingEvidence = structuredClone(result.stagingEvidence);
+  return result;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -139,6 +142,7 @@ const server = http.createServer(async (req, res) => {
         answer: result.answer,
         citations: result.citations,
         auditEventCount: auditEvents.length,
+        stagingEvidence: result.stagingEvidence,
         realMatterAuthority: false,
         productionAuthority: false,
       });
@@ -166,6 +170,7 @@ const server = http.createServer(async (req, res) => {
         realMatterAuthority: false,
         productionAuthority: false,
       })),
+      contractEvidence: lastStagingEvidence,
       rawPayloadRetained: false,
       realMatterAuthority: false,
       productionAuthority: false,
