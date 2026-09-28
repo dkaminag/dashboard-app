@@ -7,7 +7,7 @@ RUN cd systems/legal-agent-cloud && npm install --omit=dev --no-audit --no-fund
 
 COPY systems/legal-agent-cloud ./systems/legal-agent-cloud
 COPY skills/legal-counsel-br/SKILL.md ./skills/legal-counsel-br/SKILL.md
-RUN cd systems/legal-agent-cloud && LEGAL_DOCUMENT_EXTRACTION_DIAGNOSTIC=1 npm run check
+RUN cd systems/legal-agent-cloud && npm run check
 
 ENV NODE_ENV=production
 EXPOSE 3000
