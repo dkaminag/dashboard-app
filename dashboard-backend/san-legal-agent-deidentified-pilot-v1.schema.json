@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://san.local/schemas/san-legal-agent-deidentified-pilot-v1.schema.json",
+  "title": "SAN Legal Agent Deidentified Pilot Evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "pilot_scope",
+    "source_digest",
+    "redacted_digest",
+    "redaction_manifest_digest",
+    "structured_identifier_scan_passed",
+    "detected_identifier_types",
+    "placeholder_count",
+    "human_reviewed",
+    "reviewer_role",
+    "free_text_identifiers_reviewed",
+    "raw_source_externalized",
+    "raw_source_persisted",
+    "external_research_mode",
+    "attorney_review_required",
+    "real_source_authorized",
+    "real_matter_authority",
+    "production_authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "san-legal-agent-deidentified-pilot/v1"},
+    "pilot_scope": {"const": "ARTIFICIAL_DEIDENTIFIED_FIXTURE_ONLY"},
+    "source_digest": {"$ref": "#/$defs/digest"},
+    "redacted_digest": {"$ref": "#/$defs/digest"},
+    "redaction_manifest_digest": {"$ref": "#/$defs/digest"},
+    "structured_identifier_scan_passed": {"const": true},
+    "detected_identifier_types": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "placeholder_count": {"type": "integer", "minimum": 2, "maximum": 200},
+    "human_reviewed": {"const": true},
+    "reviewer_role": {"const": "lawyer"},
+    "free_text_identifiers_reviewed": {"const": true},
+    "raw_source_externalized": {"const": false},
+    "raw_source_persisted": {"const": false},
+    "external_research_mode": {"const": "DISABLED"},
+    "attorney_review_required": {"const": true},
+    "real_source_authorized": {"const": false},
+    "real_matter_authority": {"const": false},
+    "production_authority": {"const": false}
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
