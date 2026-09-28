@@ -20,7 +20,7 @@ const SYNTHETIC_FIXTURES = Object.freeze({
     sourceRefs: Object.freeze(["synthetic:source:contract-001"]),
     sources: Object.freeze({
       "synthetic:source:contract-001":
-        "CASO ESTRITAMENTE SINTETICO: Alfa Ltda. celebrou contrato de prestacao de servicos por 12 meses. O contrato preve aviso previo de 30 dias e multa equivalente a uma mensalidade para rescisao imotivada. A contratante encerrou imediatamente, sem aviso. Nao ha cliente real, processo, CPF, CNPJ, estrategia ou documento real neste fixture.",
+        "CASO ESTRITAMENTE SINTETICO: Alfa Ltda. celebrou contrato de prestacao de servicos por 12 meses. O contrato preve aviso previo de 30 dias e multa equivalente a uma mensalidade para rescisao imotivada. A contratante encerrou imediatamente, sem aviso. Nao ha identificadores pessoais, dados de cliente, estrategia privilegiada ou documento real neste fixture.",
     }),
   }),
 });
