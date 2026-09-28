@@ -8,5 +8,7 @@ COPY central-juridica-v32-verifier/audit-keyring-canary.mjs ./audit-keyring-cana
 COPY central-juridica-v32-verifier/admin-credential-resync.mjs ./admin-credential-resync.mjs
 COPY central-juridica-v32-verifier/canonical-user-sync.mjs ./canonical-user-sync.mjs
 COPY central-juridica-v32-verifier/canonical-user-sync.contract.test.mjs ./canonical-user-sync.contract.test.mjs
+COPY central-juridica-v32-verifier/central-lawyer-session-preflight.mjs ./central-lawyer-session-preflight.mjs
+COPY central-juridica-v32-verifier/central-lawyer-session-preflight.contract.test.mjs ./central-lawyer-session-preflight.contract.test.mjs
 RUN npm run build
 CMD ["npm","start"]
