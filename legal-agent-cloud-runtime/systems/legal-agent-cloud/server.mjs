@@ -29,6 +29,9 @@ const DATABASE_URL = process.env.LEGAL_DATABASE_URL || process.env.DATABASE_URL 
 const DATA_KEY_B64 = process.env.LEGAL_DATA_KEY_B64 || "";
 const BOOTSTRAP_TOKEN = process.env.LEGAL_BOOTSTRAP_TOKEN || "";
 const PUBLIC_BASE_URL = process.env.LEGAL_PUBLIC_BASE_URL || "";
+const PRIVILEGED_DATA_ALLOWED = ["1", "true", "yes"].includes(
+  String(process.env.LEGAL_PRIVILEGED_DATA_ALLOWED || "").toLowerCase(),
+);
 const OPENAI_MODELS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
 const GROQ_MODELS = new Set(["openai/gpt-oss-120b", "openai/gpt-oss-20b"]);
 const PROVIDER_SET = new Set(["openai", "groq"]);
@@ -80,6 +83,7 @@ const MODE_SET = new Set([
   "PESQUISA",
 ]);
 const ROLE_SET = new Set(["admin", "lawyer"]);
+const SENSITIVITY_SET = new Set(["SYNTHETIC_PUBLIC", "CONFIDENTIAL"]);
 const ALLOWED_MIME = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -440,12 +444,14 @@ async function getProviderConfig() {
   const fallbackModel = defaultModelFor(name);
   const model = (await getSetting(modelSetting)) || fallbackModel;
   const policyAck = await getSetting(policySetting);
+  const zdrAck = name === "groq" ? await getSetting("groq_zdr_confirmed") : null;
   return {
     name,
     apiKey: envKey || storedKey || "",
     model: allowedModelFor(name, model) ? model : fallbackModel,
     source: envKey ? "environment" : storedKey ? "encrypted_setting" : "none",
     dataPolicyAcknowledged: policyAck === "acknowledged",
+    zeroDataRetentionConfirmed: name === "groq" && zdrAck === "confirmed",
     endpoint: name === "groq"
       ? "https://api.groq.com/openai/v1/responses"
       : "https://api.openai.com/v1/responses",
@@ -593,6 +599,21 @@ async function listRecentMessages(userId, threadId, limit = HISTORY_MESSAGE_LIMI
     metadata: row.metadata || {},
     createdAt: row.created_at,
   }));
+}
+
+async function threadHasConfidentialHistory(userId, threadId) {
+  const ownership = await getThread(userId, threadId);
+  if (!ownership) return false;
+  const result = await pool.query(
+    `SELECT 1
+       FROM legal_agent_messages
+      WHERE thread_id=$1
+        AND role='user'
+        AND metadata->>'sensitivity'='CONFIDENTIAL'
+      LIMIT 1`,
+    [threadId],
+  );
+  return Boolean(result.rows[0]);
 }
 
 async function saveMessage(threadId, role, body, metadata = {}) {
@@ -1179,7 +1200,21 @@ async function route(req, res) {
     const users = await getUserCount();
     const provider = users > 0 && user
       ? await getProviderConfig()
-      : { name: DEFAULT_PROVIDER, apiKey: "", model: defaultModelFor(DEFAULT_PROVIDER), source: "none", dataPolicyAcknowledged: false };
+      : {
+          name: DEFAULT_PROVIDER,
+          apiKey: "",
+          model: defaultModelFor(DEFAULT_PROVIDER),
+          source: "none",
+          dataPolicyAcknowledged: false,
+          zeroDataRetentionConfirmed: false,
+        };
+    const privilegedMatterReady = Boolean(
+      PRIVILEGED_DATA_ALLOWED &&
+      provider.name === "groq" &&
+      provider.apiKey &&
+      provider.dataPolicyAcknowledged &&
+      provider.zeroDataRetentionConfirmed
+    );
     json(res, 200, {
       setupRequired: users === 0,
       authenticated: Boolean(user),
@@ -1187,6 +1222,9 @@ async function route(req, res) {
       aiConfigured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
       apiKeyConfigured: Boolean(provider.apiKey),
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      zeroDataRetentionConfirmed: provider.zeroDataRetentionConfirmed,
+      privilegedMatterReady,
+      usageScope: privilegedMatterReady ? "PRIVILEGED_APPROVED" : "SYNTHETIC_PUBLIC_ONLY",
       provider: provider.name,
       model: provider.model,
       providerSource: provider.source,
@@ -1369,6 +1407,7 @@ async function route(req, res) {
     const message = String(body.message || "").trim();
     const mode = String(body.mode || "PARECER").toUpperCase();
     const webSearch = body.webSearch === true;
+    const sensitivity = String(body.sensitivity || "SYNTHETIC_PUBLIC").toUpperCase();
     if (!message || message.length > MAX_MESSAGE_CHARS) {
       json(res, 400, { error: "INVALID_MESSAGE" });
       return;
@@ -1376,6 +1415,44 @@ async function route(req, res) {
     if (!MODE_SET.has(mode)) {
       json(res, 400, { error: "INVALID_MODE" });
       return;
+    }
+    if (!SENSITIVITY_SET.has(sensitivity)) {
+      json(res, 400, { error: "INVALID_SENSITIVITY" });
+      return;
+    }
+    const confidentialHistory = await threadHasConfidentialHistory(user.id, thread.id);
+    if (confidentialHistory && sensitivity !== "CONFIDENTIAL") {
+      await audit(user.id, "thread-sensitivity-downgrade-denied", {
+        threadRef: sha256(thread.id).slice(0, 16),
+      });
+      json(res, 409, { error: "THREAD_SENSITIVITY_LOCKED" });
+      return;
+    }
+    if (sensitivity === "CONFIDENTIAL") {
+      const provider = await getProviderConfig();
+      const privilegedMatterReady = Boolean(
+        PRIVILEGED_DATA_ALLOWED &&
+        provider.name === "groq" &&
+        provider.apiKey &&
+        provider.dataPolicyAcknowledged &&
+        provider.zeroDataRetentionConfirmed
+      );
+      if (!privilegedMatterReady) {
+        await audit(user.id, "privileged-matter-denied", {
+          provider: provider.name,
+          reason: "PRIVILEGED_DATA_NOT_AUTHORIZED",
+        });
+        json(res, 403, { error: "PRIVILEGED_DATA_NOT_AUTHORIZED" });
+        return;
+      }
+      if (webSearch) {
+        await audit(user.id, "privileged-matter-denied", {
+          provider: provider.name,
+          reason: "PRIVILEGED_PUBLIC_RESEARCH_BLOCKED",
+        });
+        json(res, 400, { error: "PRIVILEGED_PUBLIC_RESEARCH_BLOCKED" });
+        return;
+      }
     }
 
     let normalizedFiles;
@@ -1391,6 +1468,7 @@ async function route(req, res) {
     const userMessageId = await saveMessage(thread.id, "user", message, {
       mode,
       webSearch,
+      sensitivity,
       fileCount: normalizedFiles.files.length,
       totalFileBytes: normalizedFiles.totalBytes,
     });
@@ -1407,6 +1485,7 @@ async function route(req, res) {
       const assistantMessageId = await saveMessage(thread.id, "assistant", answer.text, {
         mode,
         webSearch,
+        sensitivity,
         provider: answer.provider,
         model: answer.model,
         citations: answer.citations,
@@ -1419,6 +1498,7 @@ async function route(req, res) {
         threadRef: sha256(thread.id).slice(0, 16),
         mode,
         webSearch,
+        sensitivity,
         fileCount: normalizedFiles.files.length,
         totalFileBytes: normalizedFiles.totalBytes,
         provider: answer.provider,
@@ -1589,6 +1669,15 @@ async function route(req, res) {
       configured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
       apiKeyConfigured: Boolean(provider.apiKey),
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      zeroDataRetentionConfirmed: provider.zeroDataRetentionConfirmed,
+      privilegedDataAllowed: PRIVILEGED_DATA_ALLOWED,
+      privilegedMatterReady: Boolean(
+        PRIVILEGED_DATA_ALLOWED &&
+        provider.name === "groq" &&
+        provider.apiKey &&
+        provider.dataPolicyAcknowledged &&
+        provider.zeroDataRetentionConfirmed
+      ),
       provider: provider.name,
       model: provider.model,
       source: provider.source,
@@ -1632,17 +1721,33 @@ async function route(req, res) {
     if (apiKey) await setSetting(`${providerName}_api_key`, apiKey, user.id);
     await setSetting(`${providerName}_model`, model, user.id);
     await setSetting(`${providerName}_data_policy_ack`, "acknowledged", user.id);
+    if (providerName === "groq") {
+      await setSetting(
+        "groq_zdr_confirmed",
+        body.zeroDataRetentionConfirmed === true ? "confirmed" : "not_confirmed",
+        user.id,
+      );
+    }
     const provider = await getProviderConfig();
     await audit(user.id, "provider-config-updated", {
       provider: provider.name,
       model: provider.model,
       source: provider.source,
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      zeroDataRetentionConfirmed: provider.zeroDataRetentionConfirmed,
     });
     json(res, 200, {
       configured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
       apiKeyConfigured: Boolean(provider.apiKey),
       dataPolicyAcknowledged: provider.dataPolicyAcknowledged,
+      zeroDataRetentionConfirmed: provider.zeroDataRetentionConfirmed,
+      privilegedMatterReady: Boolean(
+        PRIVILEGED_DATA_ALLOWED &&
+        provider.name === "groq" &&
+        provider.apiKey &&
+        provider.dataPolicyAcknowledged &&
+        provider.zeroDataRetentionConfirmed
+      ),
       provider: provider.name,
       model: provider.model,
       source: provider.source,
