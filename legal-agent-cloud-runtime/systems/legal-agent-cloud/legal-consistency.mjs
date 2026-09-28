@@ -48,11 +48,50 @@ function hasArticle205FiveYearMismatch(normalized) {
   return false;
 }
 
+
+function hasPenaltyReductionRuleUsedAsValidity(normalized) {
+  if (!/\bart\.?\s*413\b/.test(normalized)) return false;
+  const claim =
+    /\b(?:multa|clausula penal)\b.{0,180}\b(?:suporte legal|fundamento legal|valid[a-z]*|legitim[a-z]*)\b.{0,180}\bart\.?\s*413\b/.test(normalized) ||
+    /\bart\.?\s*413\b.{0,180}\b(?:suporte legal|fundamento legal|valid[a-z]*|legitim[a-z]*)\b.{0,180}\b(?:multa|clausula penal)\b/.test(normalized);
+  if (!claim) return false;
+  const expresslyCorrected =
+    /\b(?:nao|nunca)\b.{0,120}\b(?:valid[a-z]*|fundamento|suporte)\b.{0,120}\bart\.?\s*413\b/.test(normalized) ||
+    /\bart\.?\s*413\b.{0,120}\b(?:nao|nunca)\b.{0,120}\b(?:valid[a-z]*|fundamento|suporte)\b/.test(normalized);
+  return !expresslyCorrected;
+}
+
+function hasUnresolvedPass(normalized) {
+  const passConclusion =
+    /\bconclusao\b.{0,100}\bpass\b/.test(normalized) ||
+    /\bstatus\s*:?\s*pass\b/.test(normalized);
+  if (!passConclusion) return false;
+  const hardUnresolved = /\b(?:not_located|authority_check_required|blocked)\b/.test(normalized);
+  const pending = /\bpending\b(?!\s*(?:none|nenhum|nenhuma|nao ha|sem pendencias))/.test(normalized);
+  return hardUnresolved || pending;
+}
+
+function hasPseudoCitationMarker(raw) {
+  return /【\s*\d+\s*†\s*L\d+/u.test(String(raw || ""));
+}
+
 export function findLegalConsistencyViolation(answer) {
   const normalized = normalize(answer);
 
   if (hasArticle205FiveYearMismatch(normalized)) {
     return "cc_art_205_five_year_mismatch";
+  }
+
+  if (hasPseudoCitationMarker(answer)) {
+    return "pseudo_citation_marker";
+  }
+
+  if (hasUnresolvedPass(normalized)) {
+    return "pass_with_unresolved_dependencies";
+  }
+
+  if (hasPenaltyReductionRuleUsedAsValidity(normalized)) {
+    return "penalty_reduction_rule_as_validity";
   }
 
   const mentionsPenalty = /\b(?:multa|clausula penal)\b/.test(normalized);
