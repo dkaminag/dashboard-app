@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "purpose": "deployment_snapshot_only",
   "source_of_truth": "dkaminag/san-systems-master",
-  "source_commit": "793f2ca5dee95402440aaf96b29768ac1479103c",
+  "source_commit": "920df217cd080a089e5ace19bb4819cdd47a2b78",
   "created_at": "2026-09-28",
   "byte_parity": "PASS",
   "files": [
@@ -44,15 +44,15 @@
     },
     {
       "source": "systems/legal-agent-cloud/server.mjs",
-      "git_blob_sha": "3505912197b69ab7542507a439b19ec875114c64"
+      "git_blob_sha": "2ce00c45d3e56682a290ffbe389aa8974e1b6f16"
     },
     {
       "source": "systems/legal-agent-cloud/public/index.html",
-      "git_blob_sha": "0a1cca6c5ff5a727fe292ebcbe4c6a79a2312540"
+      "git_blob_sha": "47cb7f8ad0f24b328905e2e9f5408c89dc71f610"
     },
     {
       "source": "systems/legal-agent-cloud/public/app.js",
-      "git_blob_sha": "a4c7973f00b1a126da9dff4ca223eea2aea4905b"
+      "git_blob_sha": "8f9fe9b7ea47f3d52c61fd6f2cce187dfa82c2b8"
     },
     {
       "source": "systems/legal-agent-cloud/public/styles.css",
@@ -60,7 +60,7 @@
     },
     {
       "source": "skills/legal-counsel-br/SKILL.md",
-      "git_blob_sha": "c7dedb475a546c25c54d4f7b9aaf563b831b06ed"
+      "git_blob_sha": "f858bfd6aa497112ad66c670e5b10162c5957cd2"
     }
   ]
 }

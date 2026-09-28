@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `793f2ca5dee95402440aaf96b29768ac1479103c`
+- commit: `920df217cd080a089e5ace19bb4819cdd47a2b78`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -122,3 +122,8 @@ SAN PR #288 merged as `793f2ca5dee95402440aaf96b29768ac1479103c` and adds an exp
 - this snapshot promotion does **not** set `LEGAL_PRIVILEGED_DATA_ALLOWED`, does not make a ZDR attestation, and does not authorize real Central matter data.
 
 The purpose of this promotion is to make the runtime fail closed before any future real-matter authorization, not to grant that authorization.
+
+
+## One-time administrator password recovery
+
+SAN PR #313 adds a bounded emergency recovery path for a lost administrator password. Recovery is disabled unless Railway supplies both a high-entropy `LEGAL_RECOVERY_TOKEN` and a future `LEGAL_RECOVERY_EXPIRES_AT`. The login page exposes the recovery form only during that window. A successful reset is limited to an active administrator account, invalidates that administrator's sessions, records only the encrypted SHA-256 digest of the consumed code, and makes the same code unusable again. Neither the code nor the new password is logged or committed to this snapshot.

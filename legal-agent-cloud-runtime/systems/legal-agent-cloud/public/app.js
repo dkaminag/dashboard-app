@@ -52,6 +52,9 @@ const errorMessages = {
   AI_CONTEXT_TOO_LARGE: "A mensagem, os anexos ou o contexto recente são grandes demais para análise segura neste provedor. Reduza o conteúdo desta solicitação ou divida a análise em partes.",
   CURRENT_PASSWORD_INVALID: "A senha atual está incorreta.",
   CANNOT_DISABLE_SELF: "Você não pode desativar sua própria conta.",
+  RECOVERY_NOT_AVAILABLE: "A recuperação temporária não está disponível ou já expirou.",
+  RECOVERY_CODE_INVALID: "Código de recuperação ou usuário administrador inválido.",
+  RECOVERY_FAILED: "Não foi possível redefinir a senha. Tente novamente.",
 };
 
 function showToast(message, type = "") {
@@ -94,6 +97,11 @@ function setAuthView(setupRequired = false) {
   $("app-view").classList.add("hidden");
   $("setup-form").classList.toggle("hidden", !setupRequired);
   $("login-form").classList.toggle("hidden", setupRequired);
+  $("recovery-form").classList.add("hidden");
+  $("recovery-toggle").classList.toggle(
+    "hidden",
+    setupRequired || state.status?.passwordRecoveryAvailable !== true,
+  );
 }
 
 function setAppView() {
@@ -366,6 +374,48 @@ async function refreshStatus() {
     if (latest) state.activeThread = latest;
   }
 }
+
+$("recovery-toggle").addEventListener("click", () => {
+  $("recovery-username").value = $("login-username").value.trim();
+  $("login-form").classList.add("hidden");
+  $("recovery-form").classList.remove("hidden");
+});
+
+$("recovery-cancel").addEventListener("click", () => {
+  $("recovery-form").classList.add("hidden");
+  $("login-form").classList.remove("hidden");
+});
+
+$("recovery-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const password = $("recovery-password").value;
+  const confirmation = $("recovery-password-confirm").value;
+  if (password !== confirmation) {
+    showToast("As duas senhas não coincidem.", "error");
+    return;
+  }
+  try {
+    await request("/api/recovery/reset-password", {
+      method: "POST",
+      body: {
+        username: $("recovery-username").value,
+        token: $("recovery-token").value,
+        newPassword: password,
+      },
+    });
+    $("login-username").value = $("recovery-username").value.trim();
+    $("recovery-token").value = "";
+    $("recovery-password").value = "";
+    $("recovery-password-confirm").value = "";
+    $("recovery-form").classList.add("hidden");
+    $("login-form").classList.remove("hidden");
+    state.status = await request("/api/status");
+    $("recovery-toggle").classList.add("hidden");
+    showToast("Senha redefinida. Entre com a nova senha.");
+  } catch (error) {
+    showToast(apiError(error), "error");
+  }
+});
 
 $("login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
