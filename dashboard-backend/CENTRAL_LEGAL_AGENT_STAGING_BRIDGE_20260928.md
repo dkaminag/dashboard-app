@@ -21,6 +21,8 @@ The bridge accepts only the SAN invocation shape and then narrows it further:
 - `PJECALC_PREPARE` is blocked;
 - feature flag must be explicitly ON;
 - operator must be authenticated;
+- operator role must be the verified Central legal role `lawyer`;
+- the synthetic QA role `assistant` is explicitly blocked;
 - requested capabilities must be present in the authorization evidence;
 - resolver must be `LOCAL_TRUSTED`;
 - transport is invoked with `webSearch=false` and no files;
@@ -45,6 +47,8 @@ It contains no real client, process, CPF, CNPJ, privileged strategy or real docu
 - happy-path synthetic invocation;
 - flag OFF blocks execution;
 - unauthenticated operator blocks execution;
+- operator role `assistant` blocks execution;
+- operator role `lawyer` is required for this staging bridge;
 - missing capability authorization blocks execution;
 - `LEGAL_PRIVILEGED` is rejected;
 - non-synthetic matter references are rejected;
@@ -56,4 +60,4 @@ It contains no real client, process, CPF, CNPJ, privileged strategy or real docu
 
 A green CI for this candidate is not authorization to deploy it or to process a real matter.
 
-The next promotion step after CI is an isolated synthetic staging deployment or equivalent controlled vertical E2E using dedicated staging identity/configuration. Real client data remains a separate explicit authorization gate.
+The next promotion step after CI is an isolated synthetic staging deployment or equivalent controlled vertical E2E using dedicated staging identity/configuration. The role binding is deliberately conservative: only the Central role `lawyer`, which is verified by the canonical user-sync contract, is recognized; no broader role is inferred. Real client data remains a separate explicit authorization gate.
