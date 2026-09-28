@@ -23,6 +23,7 @@ const errorMessages = {
   AI_DATA_POLICY_NOT_ACKNOWLEDGED: "O administrador ainda não confirmou a política de dados do provedor de IA.",
   DATA_POLICY_ACK_REQUIRED: "Confirme a política de dados antes de ativar a IA.",
   AI_PROVIDER_ERROR: "O provedor de IA recusou ou não concluiu a solicitação.",
+  AI_PROVIDER_RATE_LIMITED: "O limite temporário do provedor de IA foi atingido. Aguarde alguns segundos ou minutos e tente novamente.",
   AI_EMPTY_RESPONSE: "O provedor de IA respondeu sem conteúdo utilizável.",
   THREAD_NOT_FOUND: "A demanda não foi encontrada.",
   INVALID_MESSAGE: "Escreva uma mensagem válida.",
