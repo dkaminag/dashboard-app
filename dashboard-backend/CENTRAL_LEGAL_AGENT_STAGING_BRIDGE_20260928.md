@@ -140,3 +140,28 @@ The technical E2E proves:
 Automated CI uses `attestationKind=TEST_ONLY_SYNTHETIC_REVIEW`. This is deliberately marked `technicalE2EOnly=true` and `humanReviewAuthority=false`.
 
 A real pilot must still provide `attestationKind=REAL_HUMAN_LAWYER_REVIEW`. CI is not allowed to synthesize or claim that human review.
+
+
+## Server-bound human-review attestation contract
+
+The technical E2E remains explicitly non-human and cannot promote itself into a real
+review. For a future real human review of the **artificial fixture**, the pilot
+adapter now requires the review attestation to be bound to a Central principal
+resolved server-side through `CENTRAL_SERVER_SESSION`.
+
+The real-review path requires:
+
+- `attestationKind=REAL_HUMAN_LAWYER_REVIEW`;
+- `attestationSource=CENTRAL_SERVER_REVIEW_EVENT`;
+- SHA-256 review-event, reviewer-principal and reviewer-session digests;
+- the review target digest to equal the exact artificial redacted fixture;
+- active/authenticated Central role `lawyer`;
+- MFA assurance when required;
+- the reviewer principal/session digests to match the server-resolved binding;
+- no raw cookie, authorization header, session token, password, MFA/TOTP or secret material.
+
+Automated CI exercises only fail-closed rejection conditions for this real-review
+path. It does **not** synthesize a successful `REAL_HUMAN_LAWYER_REVIEW` event
+and therefore cannot grant `humanReviewAuthority=true` by itself.
+
+This contract still grants no real-source, real-matter or production authority.

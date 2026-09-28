@@ -2,8 +2,14 @@ import { createHash } from "node:crypto";
 import {
   executeLegalAgentStagingBridge,
 } from "./central-legal-agent-staging-bridge.mjs";
+import {
+  bindCentralResolvedSessionPrincipal,
+} from "./central-legal-agent-session-binding.mjs";
 
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+const REAL_REVIEW_ATTESTATION = "REAL_HUMAN_LAWYER_REVIEW";
+const TEST_REVIEW_ATTESTATION = "TEST_ONLY_SYNTHETIC_REVIEW";
+const CENTRAL_REVIEW_EVENT_SOURCE = "CENTRAL_SERVER_REVIEW_EVENT";
 const PLACEHOLDER_RE = /\[[A-Z][A-Z0-9_]{2,79}\]/g;
 const IDENTIFIERS = Object.freeze([
   ["CNJ_PROCESS", /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/],
@@ -49,6 +55,42 @@ function fail(code) {
 
 function scanStructuredIdentifiers(text) {
   return IDENTIFIERS.filter(([, regex]) => regex.test(text)).map(([name]) => name).sort();
+}
+
+function validateRealHumanReviewBinding({ humanReview, centralPrincipal, request }) {
+  if (humanReview.attestationKind !== REAL_REVIEW_ATTESTATION) {
+    fail("DEID_REAL_HUMAN_REVIEW_ATTESTATION_REQUIRED");
+  }
+  if (humanReview.attestationSource !== CENTRAL_REVIEW_EVENT_SOURCE) {
+    fail("DEID_REVIEW_EVENT_SOURCE_INVALID");
+  }
+  if (!DIGEST_RE.test(String(humanReview.reviewEventDigest || ""))) {
+    fail("DEID_REVIEW_EVENT_DIGEST_INVALID");
+  }
+  if (!DIGEST_RE.test(String(humanReview.reviewerPrincipalDigest || ""))) {
+    fail("DEID_REVIEW_PRINCIPAL_DIGEST_INVALID");
+  }
+  if (!DIGEST_RE.test(String(humanReview.reviewerSessionDigest || ""))) {
+    fail("DEID_REVIEW_SESSION_DIGEST_INVALID");
+  }
+  if (humanReview.reviewTargetDigest !== sha256(ARTIFICIAL_REDACTED)) {
+    fail("DEID_REVIEW_TARGET_MISMATCH");
+  }
+  if (!centralPrincipal || typeof centralPrincipal !== "object") {
+    fail("DEID_CENTRAL_PRINCIPAL_REQUIRED");
+  }
+
+  const binding = bindCentralResolvedSessionPrincipal({
+    principal: centralPrincipal,
+    request,
+  });
+  if (humanReview.reviewerPrincipalDigest !== binding.identityBindingEvidence.principal_ref_digest) {
+    fail("DEID_REVIEW_PRINCIPAL_MISMATCH");
+  }
+  if (humanReview.reviewerSessionDigest !== binding.identityBindingEvidence.session_ref_digest) {
+    fail("DEID_REVIEW_SESSION_MISMATCH");
+  }
+  return binding;
 }
 
 function buildEvidence({ humanReview }) {
@@ -135,6 +177,7 @@ export function buildArtificialDeidentifiedRequest() {
 export async function executeArtificialDeidentifiedStagingPilot({
   operator,
   authorization,
+  centralPrincipal,
   auditSink,
   transport,
   humanReview,
@@ -143,17 +186,29 @@ export async function executeArtificialDeidentifiedStagingPilot({
   const evidence = createArtificialDeidentifiedFixtureEvidence({ humanReview });
   const request = buildArtificialDeidentifiedRequest();
 
-  if (technicalE2EOnly !== true && humanReview.attestationKind !== "REAL_HUMAN_LAWYER_REVIEW") {
-    fail("DEID_REAL_HUMAN_REVIEW_ATTESTATION_REQUIRED");
-  }
-  if (technicalE2EOnly === true && humanReview.attestationKind !== "TEST_ONLY_SYNTHETIC_REVIEW") {
-    fail("DEID_TEST_ATTESTATION_REQUIRED");
+  let effectiveOperator = operator;
+  let effectiveAuthorization = authorization;
+  let identityBindingEvidence = null;
+
+  if (technicalE2EOnly === true) {
+    if (humanReview.attestationKind !== TEST_REVIEW_ATTESTATION) {
+      fail("DEID_TEST_ATTESTATION_REQUIRED");
+    }
+  } else {
+    const binding = validateRealHumanReviewBinding({
+      humanReview,
+      centralPrincipal,
+      request,
+    });
+    effectiveOperator = binding.operator;
+    effectiveAuthorization = binding.authorization;
+    identityBindingEvidence = binding.identityBindingEvidence;
   }
 
   const result = await executeLegalAgentStagingBridge({
     request,
-    operator,
-    authorization,
+    operator: effectiveOperator,
+    authorization: effectiveAuthorization,
     featureFlagEnabled: true,
     resolver: createArtificialDeidentifiedResolver(),
     auditSink,
@@ -163,6 +218,7 @@ export async function executeArtificialDeidentifiedStagingPilot({
   return {
     ...result,
     deidentifiedPilotEvidence: evidence,
+    identityBindingEvidence,
     technicalE2EOnly,
     humanReviewAuthority: technicalE2EOnly ? false : true,
     realSourceAuthorized: false,
