@@ -1,8 +1,9 @@
 import { parentPort, workerData } from "node:worker_threads";
+import { fileURLToPath } from "node:url";
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const STANDARD_FONT_DATA_URL = new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url).href;
+const STANDARD_FONT_DATA_URL = fileURLToPath(new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url));
 
 function extractionError(code) {
   const error = new Error(code);
