@@ -58,7 +58,7 @@ async function main() {
 
   const result = await executeLegalAgentStagingBridge({
     request,
-    operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+    operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
     authorization: authorizationFor(request),
     featureFlagEnabled: true,
     resolver: createSyntheticMatterResolver(),
@@ -78,6 +78,7 @@ async function main() {
 
   assert.equal(auditSink.events.length, 2);
   assert.equal(auditSink.events[0].event, "LEGAL_AGENT_STAGING_INVOCATION");
+  assert.equal(auditSink.events[0].operatorRole, "lawyer");
   assert.equal(auditSink.events[0].sideEffectsEnabled, false);
   assert.equal(auditSink.events[0].filingEnabled, false);
   assert.equal(auditSink.events[0].pjecalcExportEnabled, false);
@@ -93,7 +94,7 @@ async function main() {
   await expectCode("STAGING_FEATURE_FLAG_DISABLED", async () => {
     await executeLegalAgentStagingBridge({
       request,
-      operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
       authorization: authorizationFor(request),
       featureFlagEnabled: false,
       resolver: createSyntheticMatterResolver(),
@@ -105,7 +106,19 @@ async function main() {
   await expectCode("STAGING_OPERATOR_AUTH_REQUIRED", async () => {
     await executeLegalAgentStagingBridge({
       request,
-      operator: { authenticated: false, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: false, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
+      authorization: authorizationFor(request),
+      featureFlagEnabled: true,
+      resolver: createSyntheticMatterResolver(),
+      auditSink: createAuditSink(),
+      transport: createTransport(),
+    });
+  });
+
+  await expectCode("STAGING_OPERATOR_ROLE_BLOCKED", async () => {
+    await executeLegalAgentStagingBridge({
+      request,
+      operator: { authenticated: true, ref: "central:operator:synthetic-assistant", role: "assistant" },
       authorization: authorizationFor(request),
       featureFlagEnabled: true,
       resolver: createSyntheticMatterResolver(),
@@ -117,7 +130,7 @@ async function main() {
   await expectCode("STAGING_CAPABILITY_NOT_AUTHORIZED", async () => {
     await executeLegalAgentStagingBridge({
       request,
-      operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
       authorization: { ref: request.authorization_ref, capabilities: ["LEGAL_ANALYSIS"] },
       featureFlagEnabled: true,
       resolver: createSyntheticMatterResolver(),
@@ -129,7 +142,7 @@ async function main() {
   await expectCode("STAGING_SENSITIVITY_BLOCKED", async () => {
     await executeLegalAgentStagingBridge({
       request: { ...request, sensitivity: "LEGAL_PRIVILEGED" },
-      operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
       authorization: authorizationFor(request),
       featureFlagEnabled: true,
       resolver: createSyntheticMatterResolver(),
@@ -141,7 +154,7 @@ async function main() {
   await expectCode("STAGING_REAL_MATTER_BLOCKED", async () => {
     await executeLegalAgentStagingBridge({
       request: { ...request, matter_ref: "central:matter:real-001" },
-      operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
       authorization: authorizationFor(request),
       featureFlagEnabled: true,
       resolver: createSyntheticMatterResolver(),
@@ -157,7 +170,7 @@ async function main() {
     };
     await executeLegalAgentStagingBridge({
       request: withPublicResearch,
-      operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
       authorization: {
         ref: request.authorization_ref,
         capabilities: [...withPublicResearch.requested_capabilities],
@@ -172,7 +185,7 @@ async function main() {
   await expectCode("STAGING_UNEXPECTED_PROVIDER_CITATION", async () => {
     await executeLegalAgentStagingBridge({
       request,
-      operator: { authenticated: true, ref: "central:operator:synthetic-admin" },
+      operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
       authorization: authorizationFor(request),
       featureFlagEnabled: true,
       resolver: createSyntheticMatterResolver(),
