@@ -1,0 +1,81 @@
+name: Legal Agent SAN Candidate Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "legal-agent-cloud-runtime/**"
+      - ".github/workflows/legal-agent-san-candidate-audit.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legal-agent-san-candidate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Build exact deployment container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --tag bp-legal-agent-san-candidate:${GITHUB_SHA::12} \
+            legal-agent-cloud-runtime
+
+      - name: Execute deterministic opinion regressions in container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node \
+            bp-legal-agent-san-candidate:${GITHUB_SHA::12} \
+            --input-type=module -e '
+              import { findLegalConsistencyViolation } from "file:///app/systems/legal-agent-cloud/legal-consistency.mjs";
+              const cases = [
+                ["Prazo prescricional de 5 anos (art. 205 CC).", "cc_art_205_five_year_mismatch"],
+                ["A multa pode ser cobrada e, alem dela, perdas e danos.", "penalty_supplemental_damages_unqualified"],
+                ["Fundamento legal (todos VERIFIED_FACT): Art. 473 do Codigo Civil.", "authority_mislabeled_as_verified_fact"],
+                ["Fonte oficial verificada 【3†L30-L36】.", "pseudo_citation_marker"],
+                ["Informacoes faltantes (PENDING): contrato integral. Conclusao condicionada (PASS).", "pass_with_unresolved_dependencies"],
+                ["A clausula de multa tem suporte legal como clausula penal no art. 413.", "penalty_reduction_rule_as_validity"],
+                ["Informacoes faltantes (PENDING): contrato integral. Conclusao: CONDITIONAL.", null],
+                ["O art. 413 nao e fundamento de validade da multa; disciplina a reducao equitativa nas hipoteses legais.", null],
+              ];
+              for (const [input, expected] of cases) {
+                const actual = findLegalConsistencyViolation(input);
+                if (actual !== expected) throw new Error(`expected=${expected} actual=${actual} input=${input}`);
+              }
+              console.log("LEGAL_OPINION_REGRESSION=PASS");
+            '
+
+      - name: Verify startup smoke privacy boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node \
+            bp-legal-agent-san-candidate:${GITHUB_SHA::12} \
+            --input-type=module -e '
+              import fs from "node:fs";
+              const src = fs.readFileSync("/app/systems/legal-agent-cloud/server.mjs", "utf8");
+              if (!src.includes("LEGAL_SYNTHETIC_SMOKE_ON_START")) throw new Error("missing smoke flag");
+              if (!src.includes("legal-agent-synthetic-smoke-pass")) throw new Error("missing pass event");
+              if (!src.includes("legal-agent-synthetic-smoke-fail")) throw new Error("missing fail event");
+              const i = src.indexOf("event: \"legal-agent-synthetic-smoke-pass\"");
+              const block = src.slice(Math.max(0, i - 250), i + 900);
+              if (block.includes("result.text") || block.includes("apiKey")) throw new Error("sensitive smoke logging");
+              console.log("SYNTHETIC_SMOKE_PRIVACY=PASS");
+            '
+
+      - name: Remove candidate image
+        if: always()
+        shell: bash
+        run: docker image rm -f bp-legal-agent-san-candidate:${GITHUB_SHA::12} >/dev/null 2>&1 || true
