@@ -123,17 +123,16 @@ jobs:
           with sync_playwright() as playwright:
               browser = playwright.firefox.launch(headless=True)
               page = browser.new_page()
-              response = page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-              status = response.status if response is not None else None
-              body = (page.locator("body").inner_text(timeout=15_000) or "").strip()
-              print(f"browser_status={status}")
-              print(f"browser_url={page.url}")
-              print(f"browser_title={page.title()[:160]}")
+              page.goto(url, wait_until="commit", timeout=60_000)
+              page.wait_for_url("**/pjecalc/pages/principal.jsf", wait_until="domcontentloaded", timeout=60_000)
+              body = (page.locator("body").inner_text(timeout=30_000) or "").strip()
+              final_url = page.url
+              title = page.title()
+              print(f"browser_url={final_url}")
+              print(f"browser_title={title[:160]}")
               print(f"body_chars={len(body)}")
-              if status is None or status >= 500:
-                  raise SystemExit("PJe-Calc browser navigation did not return a usable HTTP response")
-              if "/pjecalc" not in page.url.lower():
-                  raise SystemExit("PJe-Calc browser navigation left the local application path")
+              if "/pjecalc/pages/principal.jsf" not in final_url.lower():
+                  raise SystemExit("PJe-Calc browser navigation did not reach the local principal page")
               if len(body) < 20:
                   raise SystemExit("PJe-Calc browser navigation returned no usable page text")
               browser.close()
