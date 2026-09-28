@@ -1,0 +1,133 @@
+name: Central Legal Agent Isolated Staging Runtime
+
+on:
+  pull_request:
+    paths:
+      - "central-legal-agent-staging-runtime/**"
+      - "dashboard-backend/central-legal-agent-staging-bridge.mjs"
+      - ".github/workflows/central-legal-agent-isolated-staging-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central-legal-agent-isolated-staging-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-synthetic-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Syntax gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check dashboard-backend/central-legal-agent-staging-bridge.mjs
+          node --check central-legal-agent-staging-runtime/server.mjs
+
+      - name: Build isolated staging image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build             -f central-legal-agent-staging-runtime/Dockerfile             -t central-legal-agent-staging:candidate             .
+
+      - name: Prove disabled-by-default behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f cj-legal-staging >/dev/null 2>&1 || true
+          docker network rm cj-legal-staging-net >/dev/null 2>&1 || true
+          docker network create --driver bridge --internal cj-legal-staging-net
+          docker run -d             --name cj-legal-staging             --network cj-legal-staging-net             --security-opt no-new-privileges:true             --read-only             --tmpfs /tmp:rw,noexec,nosuid,size=16m             --pids-limit 256             --memory 512m             --cpus 1             central-legal-agent-staging:candidate
+          for attempt in $(seq 1 30); do
+            if docker exec cj-legal-staging node -e '
+              const r = await fetch("http://127.0.0.1:8080/health");
+              const b = await r.json();
+              if (r.status !== 200 || b.enabled !== false || b.ready !== false || b.productionAuthority !== false) process.exit(1);
+            '; then break; fi
+            if [ "$attempt" = "30" ]; then docker logs cj-legal-staging; exit 1; fi
+            sleep 1
+          done
+          docker exec cj-legal-staging node -e '
+            const r = await fetch("http://127.0.0.1:8080/ready");
+            if (r.status !== 503) process.exit(1);
+          '
+
+      - name: Prove enabled synthetic-only execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f cj-legal-staging
+          docker run -d             --name cj-legal-staging             --network cj-legal-staging-net             --security-opt no-new-privileges:true             --read-only             --tmpfs /tmp:rw,noexec,nosuid,size=16m             --pids-limit 256             --memory 512m             --cpus 1             -e CJ_LEGAL_AGENT_STAGING_ENABLED=true             -e CJ_LEGAL_AGENT_STAGING_ENV=STAGING             -e CJ_LEGAL_AGENT_STAGING_DATA_MODE=SYNTHETIC             central-legal-agent-staging:candidate
+          for attempt in $(seq 1 30); do
+            if docker exec cj-legal-staging node -e '
+              const r = await fetch("http://127.0.0.1:8080/ready");
+              const b = await r.json();
+              if (r.status !== 200 || b.ready !== undefined && b.ready !== true) process.exit(1);
+              if (b.environment !== "STAGING" || b.dataMode !== "SYNTHETIC") process.exit(1);
+              if (b.identityMode !== "SYNTHETIC_FIXTURE") process.exit(1);
+              if (b.realMatterAuthority !== false || b.productionAuthority !== false) process.exit(1);
+            '; then break; fi
+            if [ "$attempt" = "30" ]; then docker logs cj-legal-staging; exit 1; fi
+            sleep 1
+          done
+          docker exec cj-legal-staging node -e '
+            const r = await fetch("http://127.0.0.1:8080/api/staging/synthetic", { method: "POST" });
+            const b = await r.json();
+            if (r.status !== 200 || b.ok !== true) process.exit(1);
+            if (b.realMatterAuthority !== false || b.productionAuthority !== false) process.exit(1);
+            if (!String(b.answer || "").includes("estritamente sintetica")) process.exit(1);
+            if (!Array.isArray(b.citations) || b.citations.length !== 0) process.exit(1);
+          '
+          docker exec cj-legal-staging node -e '
+            const r = await fetch("http://127.0.0.1:8080/api/staging/synthetic", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ matter: "real" })
+            });
+            const b = await r.json();
+            if (r.status !== 400 || b.error !== "STAGING_ARBITRARY_INPUT_BLOCKED") process.exit(1);
+          '
+          docker exec cj-legal-staging node -e '
+            const r = await fetch("http://127.0.0.1:8080/api/staging/evidence");
+            const b = await r.json();
+            const raw = JSON.stringify(b);
+            if (r.status !== 200 || b.rawPayloadRetained !== false) process.exit(1);
+            if (raw.includes("Alfa Ltda") || raw.includes("aviso previo")) process.exit(1);
+            if (b.realMatterAuthority !== false || b.productionAuthority !== false) process.exit(1);
+          '
+
+      - name: Prove outbound runtime egress is blocked
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec cj-legal-staging node -e '
+            const net = await import("node:net");
+            await new Promise((resolve, reject) => {
+              const socket = net.createConnection({ host: "1.1.1.1", port: 443, timeout: 2000 });
+              socket.on("connect", () => reject(new Error("external egress unexpectedly available")));
+              socket.on("timeout", () => { socket.destroy(); resolve(); });
+              socket.on("error", () => resolve());
+            });
+            console.log("external_egress=blocked");
+          '
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f cj-legal-staging >/dev/null 2>&1 || true
+          docker network rm cj-legal-staging-net >/dev/null 2>&1 || true
+          docker image rm -f central-legal-agent-staging:candidate >/dev/null 2>&1 || true
