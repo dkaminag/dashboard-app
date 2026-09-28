@@ -798,25 +798,53 @@ function mergeUsage(first, second) {
   };
 }
 
+function providerRetryAfterSeconds(response) {
+  const raw = response.headers.get("retry-after");
+  if (!raw) return null;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  const absolute = Date.parse(raw);
+  if (!Number.isFinite(absolute)) return null;
+  return Math.max(0, (absolute - Date.now()) / 1000);
+}
+
 async function invokeProvider(provider, body) {
-  const response = await fetch(provider.endpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${provider.apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error("AI_PROVIDER_ERROR");
-    error.statusCode = response.status === 401 ? 502 : 503;
+  let attempt = 0;
+  while (true) {
+    const response = await fetch(provider.endpoint, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${provider.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) return { response, payload };
+
+    const retryAfterSeconds = providerRetryAfterSeconds(response);
+    if (
+      provider.name === "groq" &&
+      response.status === 429 &&
+      attempt === 0 &&
+      retryAfterSeconds !== null &&
+      retryAfterSeconds > 0 &&
+      retryAfterSeconds <= 5
+    ) {
+      attempt += 1;
+      await new Promise((resolve) => setTimeout(resolve, Math.ceil(retryAfterSeconds * 1000) + 100));
+      continue;
+    }
+
+    const isRateLimit = response.status === 429;
+    const error = new Error(isRateLimit ? "AI_PROVIDER_RATE_LIMITED" : "AI_PROVIDER_ERROR");
+    error.statusCode = isRateLimit ? 429 : response.status === 401 ? 502 : 503;
     error.providerStatus = response.status;
     error.providerCode = payload?.error?.code || payload?.error?.type || "provider_error";
+    error.retryAfterSeconds = retryAfterSeconds;
     throw error;
   }
-  return { response, payload };
 }
 function cloudDeveloperPrompt(mode, webSearchEnabled) {
   return `${legalSkill}
@@ -1428,6 +1456,7 @@ async function route(req, res) {
         contextBudgetBytes: error.budgetBytes ?? null,
         historyIncluded: error.historyIncluded ?? null,
         historyOmitted: error.historyOmitted ?? null,
+        retryAfterSeconds: error.retryAfterSeconds ?? null,
       };
       await audit(user.id, "legal-agent-error", {
         threadRef: sha256(thread.id).slice(0, 16),
@@ -1443,6 +1472,7 @@ async function route(req, res) {
         providerStatus: error.providerStatus || undefined,
         providerCode: error.providerCode || undefined,
         authorityCount: error.authorityCount || undefined,
+        retryAfterSeconds: error.retryAfterSeconds ?? undefined,
         context: error.code === "AI_CONTEXT_TOO_LARGE"
           ? {
               inputBytes: error.inputBytes,
