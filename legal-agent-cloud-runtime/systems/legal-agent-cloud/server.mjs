@@ -28,6 +28,8 @@ const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.LEGAL_DATABASE_URL || process.env.DATABASE_URL || "";
 const DATA_KEY_B64 = process.env.LEGAL_DATA_KEY_B64 || "";
 const BOOTSTRAP_TOKEN = process.env.LEGAL_BOOTSTRAP_TOKEN || "";
+const RECOVERY_TOKEN = process.env.LEGAL_RECOVERY_TOKEN || "";
+const RECOVERY_EXPIRES_AT = process.env.LEGAL_RECOVERY_EXPIRES_AT || "";
 const PUBLIC_BASE_URL = process.env.LEGAL_PUBLIC_BASE_URL || "";
 const PRIVILEGED_DATA_ALLOWED = ["1", "true", "yes"].includes(
   String(process.env.LEGAL_PRIVILEGED_DATA_ALLOWED || "").toLowerCase(),
@@ -415,6 +417,14 @@ async function setSetting(key, value, actorId) {
          updated_by=excluded.updated_by, updated_at=now()`,
     [key, enc.ciphertext, enc.iv, enc.tag, actorId],
   );
+}
+
+async function adminRecoveryAvailable() {
+  if (!RECOVERY_TOKEN || RECOVERY_TOKEN.length < 32) return false;
+  const expiresAt = Date.parse(RECOVERY_EXPIRES_AT);
+  if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return false;
+  const consumedHash = await getSetting("admin_recovery_consumed_sha256");
+  return consumedHash !== sha256(RECOVERY_TOKEN);
 }
 
 function defaultModelFor(providerName) {
@@ -1217,6 +1227,7 @@ async function route(req, res) {
     );
     json(res, 200, {
       setupRequired: users === 0,
+      passwordRecoveryAvailable: users > 0 ? await adminRecoveryAvailable() : false,
       authenticated: Boolean(user),
       user,
       aiConfigured: Boolean(provider.apiKey && provider.dataPolicyAcknowledged),
@@ -1266,6 +1277,72 @@ async function route(req, res) {
     } catch (error) {
       const known = ["PASSWORD_LENGTH", "INVALID_USERNAME", "INVALID_DISPLAY_NAME"].includes(error.message);
       json(res, known ? 400 : 500, { error: known ? error.message : "SETUP_FAILED" });
+    }
+    return;
+  }
+
+  if (pathname === "/api/recovery/reset-password" && method === "POST") {
+    if (!rateLimit(`recovery:${ip}`, 8, 15 * 60_000)) {
+      json(res, 429, { error: "RATE_LIMITED" });
+      return;
+    }
+    if (!(await adminRecoveryAvailable())) {
+      json(res, 410, { error: "RECOVERY_NOT_AVAILABLE" });
+      return;
+    }
+
+    const body = await readJson(req);
+    if (!safeEqualString(body.token, RECOVERY_TOKEN)) {
+      await audit(null, "admin-recovery-denied", { ipHash: sha256(ip).slice(0, 16), reason: "INVALID_CODE" });
+      json(res, 403, { error: "RECOVERY_CODE_INVALID" });
+      return;
+    }
+
+    const username = normalizeUsername(body.username);
+    if (!USERNAME_RE.test(username)) {
+      await audit(null, "admin-recovery-denied", { ipHash: sha256(ip).slice(0, 16), reason: "INVALID_ACCOUNT" });
+      json(res, 403, { error: "RECOVERY_CODE_INVALID" });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT id FROM legal_agent_users
+       WHERE username=$1 AND role='admin' AND active=true`,
+      [username],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      await audit(null, "admin-recovery-denied", { ipHash: sha256(ip).slice(0, 16), reason: "INVALID_ACCOUNT" });
+      json(res, 403, { error: "RECOVERY_CODE_INVALID" });
+      return;
+    }
+
+    try {
+      const next = await hashPassword(body.newPassword);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `UPDATE legal_agent_users
+           SET password_salt=$1,password_hash=$2,password_changed_at=now()
+           WHERE id=$3`,
+          [next.salt, next.hash, row.id],
+        );
+        await client.query("DELETE FROM legal_agent_sessions WHERE user_id=$1", [row.id]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+      await setSetting("admin_recovery_consumed_sha256", sha256(RECOVERY_TOKEN), row.id);
+      await audit(row.id, "admin-recovery-completed", { ipHash: sha256(ip).slice(0, 16) });
+      json(res, 200, { ok: true });
+    } catch (error) {
+      json(res, error.message === "PASSWORD_LENGTH" ? 400 : 500, {
+        error: error.message === "PASSWORD_LENGTH" ? "PASSWORD_LENGTH" : "RECOVERY_FAILED",
+      });
     }
     return;
   }
