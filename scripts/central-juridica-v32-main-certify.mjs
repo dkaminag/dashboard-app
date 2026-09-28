@@ -14,7 +14,9 @@ const APPROVED_PATH_SOURCES = [
   },
   {
     path: 'central-juridica-v32-verifier',
-    source: '0e9242c7189513697f4bc4d31c99c37afde6f6fa',
+    // PRs #50/#51 added the audited, opt-in canonical lawyer-user sync and
+    // its Docker packaging. Dedicated contract run 36431198919 passed before merge.
+    source: '919e9d3d569129f61231a00258d06bd2608eba04',
   },
 ];
 
