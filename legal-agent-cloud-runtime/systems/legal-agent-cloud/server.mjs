@@ -38,6 +38,9 @@ const OPENAI_DEFAULT_MODEL = OPENAI_MODELS.has(requestedOpenAIModel) ? requested
 const requestedGroqModel = process.env.LEGAL_GROQ_MODEL || "openai/gpt-oss-120b";
 const GROQ_DEFAULT_MODEL = GROQ_MODELS.has(requestedGroqModel) ? requestedGroqModel : "openai/gpt-oss-120b";
 const REASONING_EFFORT = process.env.LEGAL_REASONING_EFFORT || "high";
+const SYNTHETIC_SMOKE_ON_START = ["1", "true", "yes"].includes(
+  String(process.env.LEGAL_SYNTHETIC_SMOKE_ON_START || "").toLowerCase(),
+);
 const GROQ_REASONING_SET = new Set(["low", "medium", "high"]);
 const requestedGroqReasoning = String(process.env.LEGAL_GROQ_REASONING_EFFORT || "medium").toLowerCase();
 const GROQ_REASONING_EFFORT = GROQ_REASONING_SET.has(requestedGroqReasoning) ? requestedGroqReasoning : "medium";
@@ -742,6 +745,18 @@ function legalConsistencyRepairDirective(code) {
   } else if (code === "authority_mislabeled_as_verified_fact") {
     lines.push(
       "VERIFIED_FACT is reserved for matter facts supported by evidence. Legislation, precedent and legal propositions must use authority/citation-fit language instead of VERIFIED_FACT.",
+    );
+  } else if (code === "pseudo_citation_marker") {
+    lines.push(
+      "Remove invented bracketed source markers. Use only provider citation annotations or identified user-supplied source locators.",
+    );
+  } else if (code === "pass_with_unresolved_dependencies") {
+    lines.push(
+      "Do not mark the conclusion PASS while material PENDING, BLOCKED, NOT_LOCATED or AUTHORITY_CHECK_REQUIRED dependencies remain. Use CONDITIONAL, PENDING or BLOCKED as appropriate.",
+    );
+  } else if (code === "penalty_reduction_rule_as_validity") {
+    lines.push(
+      "Do not use the equitable-reduction provision as the source of validity or enforceability of the penalty; verify the governing penalty rules separately.",
     );
   } else {
     lines.push("Remove the material inconsistency and downgrade unresolved propositions to CONDITIONAL, PENDING or BLOCKED.");
@@ -1608,6 +1623,44 @@ async function route(req, res) {
   json(res, 404, { error: "NOT_FOUND" });
 }
 
+
+async function runSyntheticStartupSmoke() {
+  if (!SYNTHETIC_SMOKE_ON_START) return;
+  const started = Date.now();
+  try {
+    const result = await callAI({
+      history: [],
+      message:
+        "CASO ESTRITAMENTE SINTETICO PARA CERTIFICACAO: Uma empresa ficticia Alfa celebrou contrato empresarial por 12 meses. O contrato preve rescisao imotivada mediante aviso previo de 30 dias e multa equivalente a uma mensalidade. A contratante encerrou imediatamente, sem aviso. Analise de forma condicionada, identifique fatos faltantes, argumentos de ambas as partes e riscos. Pesquisa publica esta desabilitada; nao invente dispositivos, precedentes, prazos prescricionais ou fontes.",
+      files: [],
+      mode: "PARECER",
+      webSearch: false,
+    });
+    console.info(JSON.stringify({
+      level: "info",
+      event: "legal-agent-synthetic-smoke-pass",
+      provider: result.provider,
+      model: result.model,
+      latencyMs: Date.now() - started,
+      consistencyRepairAttempted: Boolean(result.consistencyRepair?.attempted),
+      consistencyRepairResolved: result.consistencyRepair?.resolved ?? null,
+      authorityRepairAttempted: Boolean(result.authorityRepair?.attempted),
+      authorityRepairResolved: result.authorityRepair?.resolved ?? null,
+      citationCount: result.citations?.length || 0,
+      usage: result.usage || null,
+    }));
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "legal-agent-synthetic-smoke-fail",
+      error: error?.message || "SYNTHETIC_SMOKE_FAILED",
+      providerStatus: error?.providerStatus || null,
+      providerCode: error?.providerCode || null,
+      latencyMs: Date.now() - started,
+    }));
+  }
+}
+
 async function init() {
   legalSkill = await fs.readFile(SKILL_PATH, "utf8");
   if (!legalSkill.includes("Legal Counsel BR") || !legalSkill.includes("SAN = Control Plane")) {
@@ -1658,6 +1711,11 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(JSON.stringify({ level: "info", event: "server-listening", port: PORT }));
+  if (SYNTHETIC_SMOKE_ON_START) {
+    setTimeout(() => {
+      runSyntheticStartupSmoke().catch(() => {});
+    }, 250).unref();
+  }
 });
 
 const cleanup = setInterval(() => {
