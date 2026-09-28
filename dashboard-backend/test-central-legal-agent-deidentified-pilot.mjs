@@ -46,6 +46,39 @@ const testReview = {
   attestationKind: "TEST_ONLY_SYNTHETIC_REVIEW",
 };
 
+function d(char) {
+  return "sha256:" + char.repeat(64);
+}
+
+function centralPrincipal(overrides = {}) {
+  return {
+    source: "CENTRAL_SERVER_SESSION",
+    authenticated: true,
+    active: true,
+    role: "lawyer",
+    principal_ref_digest: d("a"),
+    session_ref_digest: d("b"),
+    mfa_required: true,
+    mfa_satisfied: true,
+    ...overrides,
+  };
+}
+
+function realReview(overrides = {}) {
+  return {
+    reviewed: true,
+    role: "lawyer",
+    freeTextReviewed: true,
+    attestationKind: "REAL_HUMAN_LAWYER_REVIEW",
+    attestationSource: "CENTRAL_SERVER_REVIEW_EVENT",
+    reviewEventDigest: d("c"),
+    reviewerPrincipalDigest: d("a"),
+    reviewerSessionDigest: d("b"),
+    reviewTargetDigest: evidence.redacted_digest,
+    ...overrides,
+  };
+}
+
 const evidence = createArtificialDeidentifiedFixtureEvidence({ humanReview: testReview });
 assert.deepEqual(Object.keys(evidence).sort(), [...schema.required].sort());
 assert.equal(evidence.pilot_scope, "ARTIFICIAL_DEIDENTIFIED_FIXTURE_ONLY");
@@ -101,11 +134,69 @@ await expectCode("DEID_LAWYER_REVIEW_REQUIRED", async () => {
 
 await expectCode("DEID_REAL_HUMAN_REVIEW_ATTESTATION_REQUIRED", async () => {
   await executeArtificialDeidentifiedStagingPilot({
-    operator: { authenticated: true, ref: "central:operator:synthetic-lawyer", role: "lawyer" },
-    authorization: { ref: request.authorization_ref, capabilities: [...request.requested_capabilities] },
+    centralPrincipal: centralPrincipal(),
     auditSink: auditSink(),
     transport: transport(),
     humanReview: testReview,
+    technicalE2EOnly: false,
+  });
+});
+
+await expectCode("DEID_CENTRAL_PRINCIPAL_REQUIRED", async () => {
+  await executeArtificialDeidentifiedStagingPilot({
+    auditSink: auditSink(),
+    transport: transport(),
+    humanReview: realReview(),
+    technicalE2EOnly: false,
+  });
+});
+
+await expectCode("STAGING_CENTRAL_ROLE_BLOCKED", async () => {
+  await executeArtificialDeidentifiedStagingPilot({
+    centralPrincipal: centralPrincipal({ role: "assistant" }),
+    auditSink: auditSink(),
+    transport: transport(),
+    humanReview: realReview(),
+    technicalE2EOnly: false,
+  });
+});
+
+await expectCode("STAGING_RAW_SESSION_MATERIAL_BLOCKED", async () => {
+  await executeArtificialDeidentifiedStagingPilot({
+    centralPrincipal: centralPrincipal({ session_token: "raw-session-must-not-cross" }),
+    auditSink: auditSink(),
+    transport: transport(),
+    humanReview: realReview(),
+    technicalE2EOnly: false,
+  });
+});
+
+await expectCode("DEID_REVIEW_PRINCIPAL_MISMATCH", async () => {
+  await executeArtificialDeidentifiedStagingPilot({
+    centralPrincipal: centralPrincipal(),
+    auditSink: auditSink(),
+    transport: transport(),
+    humanReview: realReview({ reviewerPrincipalDigest: d("d") }),
+    technicalE2EOnly: false,
+  });
+});
+
+await expectCode("DEID_REVIEW_SESSION_MISMATCH", async () => {
+  await executeArtificialDeidentifiedStagingPilot({
+    centralPrincipal: centralPrincipal(),
+    auditSink: auditSink(),
+    transport: transport(),
+    humanReview: realReview({ reviewerSessionDigest: d("d") }),
+    technicalE2EOnly: false,
+  });
+});
+
+await expectCode("DEID_REVIEW_TARGET_MISMATCH", async () => {
+  await executeArtificialDeidentifiedStagingPilot({
+    centralPrincipal: centralPrincipal(),
+    auditSink: auditSink(),
+    transport: transport(),
+    humanReview: realReview({ reviewTargetDigest: d("d") }),
     technicalE2EOnly: false,
   });
 });
