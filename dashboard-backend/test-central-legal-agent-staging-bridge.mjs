@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import {
   buildSyntheticStagingRequest,
@@ -69,6 +70,44 @@ async function main() {
   assert.equal(result.ok, true);
   assert.equal(result.realMatterAuthority, false);
   assert.equal(result.productionAuthority, false);
+  const schema = JSON.parse(
+    fs.readFileSync(
+      new URL("../central-legal-agent-staging-runtime/san-legal-agent-staging-evidence-v1.schema.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const evidence = result.stagingEvidence;
+  assert.ok(evidence);
+  assert.deepEqual(Object.keys(evidence).sort(), [...schema.required].sort());
+  assert.equal(evidence.schema_version, "san-legal-agent-staging-evidence/v1");
+  assert.equal(evidence.environment, "STAGING");
+  assert.equal(evidence.data_mode, "SYNTHETIC");
+  assert.equal(evidence.operator_authenticated, true);
+  assert.equal(evidence.resolver_trust, "LOCAL_TRUSTED");
+  assert.equal(evidence.feature_flag_key, "central.legal_agent.staging");
+  assert.equal(evidence.feature_flag_enabled, true);
+  assert.equal(evidence.external_research_mode, "DISABLED");
+  assert.equal(evidence.privileged_payload_externalized, false);
+  assert.equal(evidence.persistence_mode, "DERIVED_ONLY");
+  assert.equal(evidence.side_effects_enabled, false);
+  assert.equal(evidence.filing_enabled, false);
+  assert.equal(evidence.pjecalc_export_enabled, false);
+  assert.equal(evidence.retry_mode, "IDEMPOTENT_READ_ONLY");
+  assert.equal(evidence.synthetic_e2e_passed, true);
+  assert.equal(evidence.attorney_review_required, true);
+  assert.equal(evidence.real_matter_authority, false);
+  assert.equal(evidence.production_authority, false);
+  for (const field of [
+    "invocation_digest",
+    "authorization_mapping_digest",
+    "matter_ref_digest",
+    "source_refs_digest",
+    "audit_event_digest",
+  ]) {
+    assert.match(evidence[field], /^sha256:[0-9a-f]{64}$/);
+  }
+  const serializedEvidence = JSON.stringify(evidence);
+  assert.doesNotMatch(serializedEvidence, /Alfa Ltda|aviso previo|synthetic:matter:contract-001|synthetic:source:contract-001/i);
   assert.equal(transport.calls.length, 1);
   assert.equal(transport.calls[0].webSearch, false);
   assert.deepEqual(transport.calls[0].files, []);
