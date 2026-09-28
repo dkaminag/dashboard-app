@@ -74,3 +74,8 @@ This snapshot includes the local document-extraction runtime files required by `
 ## PDF.js standard-font runtime fix
 
 SAN PR #230 plus follow-up `4451079b4c538b8cf703916b1a25168ad055899d` bind `pdfjs-dist` standard-font data to the exact local filesystem path used by the isolated document-extraction worker. This removes an implicit runtime-directory dependency exposed by the downstream container build gate when the embedded Helvetica PDF smoke ran inside Docker. The change does not add OCR, external file access, provider calls, or attachment persistence.
+
+
+## glibc container portability
+
+SAN PR #235 merged as `2cf8868b8028f719a920cbe24e636615d262c9a7` and changes the canonical Legal Agent deployment base to `node:22-bookworm-slim`. This preserves the existing Node 22 runtime while using a glibc base for the bounded local PDF/DOCX extraction path that failed under the Alpine container gate. No provider, credential, database, or real-matter boundary is changed.
