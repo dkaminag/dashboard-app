@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `e8654382ee92e3984d55291f669badf48bf80882`
+- commit: `4451079b4c538b8cf703916b1a25168ad055899d`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -69,3 +69,18 @@ SAN PR #221 improves the no-research path without weakening the authority gate. 
 ## Deployment snapshot completeness
 
 This snapshot includes the local document-extraction runtime files required by `package.json` and `server.mjs`: `document-extract.mjs`, `document-extract-worker.mjs`, and `document-extract-smoke.mjs`. Missing any of these files is a deployment-blocking snapshot error.
+
+
+## PDF.js standard-font runtime fix
+
+SAN PR #230 plus follow-up `4451079b4c538b8cf703916b1a25168ad055899d` bind `pdfjs-dist` standard-font data to the exact local filesystem path used by the isolated document-extraction worker. This removes an implicit runtime-directory dependency exposed by the downstream container build gate when the embedded Helvetica PDF smoke ran inside Docker. The change does not add OCR, external file access, provider calls, or attachment persistence.
+
+
+## glibc container portability
+
+SAN PR #235 merged as `2cf8868b8028f719a920cbe24e636615d262c9a7` and changes the canonical Legal Agent deployment base to `node:22-bookworm-slim`. This preserves the existing Node 22 runtime while using a glibc base for the bounded local PDF/DOCX extraction path that failed under the Alpine container gate. No provider, credential, database, or real-matter boundary is changed.
+
+
+## PDF.js 6 cleanup API
+
+SAN PR #238 merged as `a39ca93ab0c1a2bc4bfecee31a31a18d1bd0a74c`. The bounded PDF worker now releases PDF.js through `PDFDocumentLoadingTask.destroy()` instead of the removed `PDFDocumentProxy.destroy()` API. The no-secret Linux container gate proved the embedded PDF and DOCX extraction smoke after this change.

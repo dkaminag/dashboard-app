@@ -1,7 +1,9 @@
 import { parentPort, workerData } from "node:worker_threads";
+import { fileURLToPath } from "node:url";
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const STANDARD_FONT_DATA_URL = fileURLToPath(new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url));
 
 function extractionError(code) {
   const error = new Error(code);
@@ -27,6 +29,7 @@ async function extractPdf(bytes, maxChars, maxPdfPages) {
     disableFontFace: true,
     useSystemFonts: false,
     isEvalSupported: false,
+    standardFontDataUrl: STANDARD_FONT_DATA_URL,
   });
 
   let pdf;
@@ -69,7 +72,7 @@ async function extractPdf(bytes, maxChars, maxPdfPages) {
     if (!normalized) throw extractionError("AI_PROVIDER_FILE_NO_TEXT");
     return { text: normalized, kind: "pdf", pages: pdf.numPages };
   } finally {
-    await pdf.destroy().catch(() => {});
+    await loadingTask.destroy().catch(() => {});
   }
 }
 
