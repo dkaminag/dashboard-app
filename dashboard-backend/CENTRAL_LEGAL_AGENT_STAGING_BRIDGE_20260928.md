@@ -113,3 +113,30 @@ When explicitly enabled, it queries only aggregate counts in `central_juridica_v
 - session rows joinable server-side to active `lawyer` users.
 
 It emits no username, user id, session id/token/hash, password, MFA/TOTP material, database URL or row payload. Any absence of an active lawyer or joinable session fails closed. Default behavior is disabled/skipped.
+
+
+## Artificial deidentified fixture technical E2E
+
+The next privacy layer is implemented with an **artificial fixture only**.
+
+Files:
+
+- `dashboard-backend/central-legal-agent-deidentified-pilot.mjs`
+- `dashboard-backend/test-central-legal-agent-deidentified-pilot.mjs`
+- `dashboard-backend/san-legal-agent-deidentified-pilot-v1.schema.json`
+
+The fixture deliberately contains fake structured identifiers in its source form and replaces them with bounded placeholders before the staging bridge is invoked.
+
+The technical E2E proves:
+
+- CNJ/CPF/CNPJ/email/phone/CEP patterns are absent from the redacted payload;
+- source and redacted digests differ;
+- placeholder evidence is present;
+- raw source is never sent to the Legal Agent transport;
+- web research/files/PJe-Calc/filing remain disabled;
+- only the redacted artificial text reaches the existing staging bridge;
+- real source authority, real matter authority and production authority remain false.
+
+Automated CI uses `attestationKind=TEST_ONLY_SYNTHETIC_REVIEW`. This is deliberately marked `technicalE2EOnly=true` and `humanReviewAuthority=false`.
+
+A real pilot must still provide `attestationKind=REAL_HUMAN_LAWYER_REVIEW`. CI is not allowed to synthesize or claim that human review.
