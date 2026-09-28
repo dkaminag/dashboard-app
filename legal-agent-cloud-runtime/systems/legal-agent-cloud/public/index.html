@@ -24,6 +24,25 @@
           <input id="login-password" type="password" autocomplete="current-password" required>
         </label>
         <button type="submit" class="primary">Entrar</button>
+        <button id="recovery-toggle" type="button" class="ghost hidden">Esqueci minha senha</button>
+      </form>
+
+      <form id="recovery-form" class="stack hidden">
+        <div class="notice">Recuperação administrativa temporária. O código expira e só pode ser usado uma vez.</div>
+        <label>Usuário administrador
+          <input id="recovery-username" autocomplete="username" required>
+        </label>
+        <label>Código de recuperação
+          <input id="recovery-token" type="password" autocomplete="one-time-code" required>
+        </label>
+        <label>Nova senha
+          <input id="recovery-password" type="password" minlength="12" autocomplete="new-password" required>
+        </label>
+        <label>Confirmar nova senha
+          <input id="recovery-password-confirm" type="password" minlength="12" autocomplete="new-password" required>
+        </label>
+        <button type="submit" class="primary">Redefinir senha</button>
+        <button id="recovery-cancel" type="button" class="ghost">Voltar ao login</button>
       </form>
 
       <form id="setup-form" class="stack hidden">
