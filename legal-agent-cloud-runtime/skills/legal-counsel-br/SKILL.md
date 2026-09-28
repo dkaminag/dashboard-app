@@ -141,6 +141,49 @@ For contract termination, penalty, damages and limitation issues, run these chec
 
 If any of these classifications remains unresolved, the conclusion must be CONDITIONAL, PENDING or BLOCKED rather than PASS.
 
+
+### 7B. Privacy, deidentification and re-identification review
+
+When a task asks whether text or data is "anonymous", "anonymized", "deidentified", "redacted" or safe to route outside the trusted legal boundary, do not treat deletion of direct identifiers as sufficient.
+
+Use three distinct review modes:
+
+- `ARTIFICIAL_FIXTURE_REVIEW` — the source is deliberately fictitious and does not represent a real person/client/matter. Automated and model-assisted review may certify the **test fixture behavior**, but must not claim human-lawyer review or real-world anonymization.
+- `REAL_DEIDENTIFIED_REVIEW` — the source began as real client/personal data. This requires a separately authorized ingestion path, current privacy-law review, residual re-identification analysis and real human legal/privacy review before any external routing.
+- `ANONYMIZATION_CLAIM` — a stronger legal claim that data has lost the possibility of direct or indirect association considering reasonable available means. Treat this as `NOT_PROVEN` unless current primary authority and contextual re-identification risk have been verified.
+
+For Brazilian law, verify the current LGPD and ANPD material before a consequential conclusion. At minimum, test the current meaning and application of:
+
+- LGPD art. 5, XI: anonymization depends on reasonable technical means available at the time of processing and loss of direct or indirect association;
+- LGPD art. 12: anonymized data may remain within the personal-data regime when reversal is possible using the controller's own means or reasonable efforts;
+- the distinction between anonymization and pseudonymization;
+- the ANPD's current risk-based, contextual treatment of re-identification.
+
+Run both a **structured identifier** and **free-text contextual** review. The free-text review must consider, when material:
+
+- names, initials, aliases and organization names;
+- profession, role, workplace, department or unusual relationship;
+- exact or narrow dates, ages, amounts and timelines;
+- precise geography, addresses, neighborhoods and unique facilities;
+- rare events, distinctive procedural history, unusual facts or combinations of otherwise ordinary facts;
+- case numbers, contract/order/account references and other domain identifiers;
+- quoted language that can be searched externally;
+- whether the reviewer/controller has auxiliary datasets that could reconnect placeholders to a person;
+- whether a third party could re-identify using reasonably available public or private information, considering cost, time and current technology.
+
+Record one of these assisted-review outcomes:
+
+- `ARTIFICIAL_FIXTURE_PASS` — artificial source only; structured identifiers removed; no material contextual clue remains in the artificial text; no claim of legal anonymization or human review.
+- `ASSISTED_REVIEW_PASS` — model/legal-supervisor review found no material residual clue in the reviewed text, but a required human review or authorization still remains.
+- `HUMAN_REVIEW_REQUIRED` — the next decision depends on professional/contextual judgment that the automated review cannot certify.
+- `REIDENTIFICATION_RISK` — material direct, indirect or combinatorial clues remain.
+- `REAL_SOURCE_BLOCKED` — a real source reached an artificial-only or otherwise unauthorized path.
+- `ANONYMIZATION_NOT_PROVEN` — the available evidence is insufficient for the stronger legal claim.
+
+Never set `human_reviewed=true`, `reviewer_role=lawyer`, or an equivalent human attestation merely because an automated test, model, agent or skill performed the review.
+
+The detailed reusable checklist is maintained in `skills/legal-counsel-br/DEIDENTIFICATION_REVIEW.md`.
+
 ### 8. Run adversarial review
 
 Before finalizing a consequential legal output, review it from two independent perspectives:
