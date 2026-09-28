@@ -1,0 +1,154 @@
+name: PJeCalc Hosted Local Runtime POC
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pjecalc-hosted-runtime-poc.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pjecalc-hosted-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-runtime-poc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout audit wrapper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout audited PJe-Calc source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: bragabarreto/pjecalc-agente
+          ref: 8a227464b907707c87173cb5e327b6afc4c09d70
+          path: _upstream/pjecalc-agente
+          persist-credentials: false
+
+      - name: Verify exact upstream source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _upstream/pjecalc-agente rev-parse HEAD)" = "8a227464b907707c87173cb5e327b6afc4c09d70"
+          test "$(git -C _upstream/pjecalc-agente hash-object Dockerfile)" = "482bc978a344d7508c870b32b463eacb4cca41a6"
+          test "$(git -C _upstream/pjecalc-agente hash-object iniciarPjeCalc.sh)" = "881178e7ab9873190d2f284b221337266b23a7f8"
+          test "$(git -C _upstream/pjecalc-agente hash-object pjecalc-dist/bin/pjecalc.jar)" = "c61da3dc0c37bd63d3f3b37dd347f34894a66cc4"
+          test -f _upstream/pjecalc-agente/pjecalc-dist/tomcat/conf/server.xml
+          test -f _upstream/pjecalc-agente/pjecalc-dist/.dados/pjecalc.h2.db
+
+      - name: Build exact-commit upstream runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --tag san-pjecalc-poc:8a22746 _upstream/pjecalc-agente
+          docker image inspect san-pjecalc-poc:8a22746 --format 'built_image_id={{.Id}}'
+
+      - name: Start isolated PJe-Calc runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f san-pjecalc-runtime-poc >/dev/null 2>&1 || true
+          docker network rm san-pjecalc-poc-net >/dev/null 2>&1 || true
+          docker network create --driver bridge --internal san-pjecalc-poc-net
+          test "$(docker network inspect --format '{{.Internal}}' san-pjecalc-poc-net)" = "true"
+          docker run -d \
+            --name san-pjecalc-runtime-poc \
+            --network san-pjecalc-poc-net \
+            --security-opt no-new-privileges:true \
+            --pids-limit 768 \
+            --memory 4g \
+            --cpus 2 \
+            --entrypoint bash \
+            san-pjecalc-poc:8a22746 \
+            -lc 'set -e; /opt/pjecalc/iniciarPjeCalc.sh; exec tail -f /dev/null'
+
+      - name: Wait for local PJe-Calc HTTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            if docker exec -i san-pjecalc-runtime-poc python - <<'PY'
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+          url = "http://127.0.0.1:9257/pjecalc/"
+          try:
+              with urlopen(url, timeout=3.0) as response:
+                  status = int(response.status)
+          except HTTPError as exc:
+              status = int(exc.code)
+          except Exception:
+              raise SystemExit(1)
+          print(f"pjecalc_http_status={status}")
+          raise SystemExit(0 if status in {200, 302, 303, 404} else 1)
+          PY
+            then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "PJe-Calc local HTTP did not become available" >&2
+          docker exec san-pjecalc-runtime-poc sh -lc 'tail -n 200 /opt/pjecalc/java.log || true' >&2 || true
+          exit 1
+
+      - name: Prove runtime outbound egress is blocked
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i san-pjecalc-runtime-poc python - <<'PY'
+          import socket
+          try:
+              connection = socket.create_connection(("1.1.1.1", 443), timeout=2.0)
+          except OSError:
+              print("external_egress=blocked")
+          else:
+              connection.close()
+              raise SystemExit("external egress unexpectedly available")
+          PY
+
+      - name: Open PJe-Calc locally with headless Firefox
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i san-pjecalc-runtime-poc python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          url = "http://127.0.0.1:9257/pjecalc/"
+          with sync_playwright() as playwright:
+              browser = playwright.firefox.launch(headless=True)
+              page = browser.new_page()
+              response = page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+              status = response.status if response is not None else None
+              body = (page.locator("body").inner_text(timeout=15_000) or "").strip()
+              print(f"browser_status={status}")
+              print(f"browser_url={page.url}")
+              print(f"browser_title={page.title()[:160]}")
+              print(f"body_chars={len(body)}")
+              if status is None or status >= 500:
+                  raise SystemExit("PJe-Calc browser navigation did not return a usable HTTP response")
+              if "/pjecalc" not in page.url.lower():
+                  raise SystemExit("PJe-Calc browser navigation left the local application path")
+              if len(body) < 20:
+                  raise SystemExit("PJe-Calc browser navigation returned no usable page text")
+              browser.close()
+          print("PJECALC_LOCAL_BROWSER_RUNTIME=PASS")
+          PY
+
+      - name: Show runtime logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          docker logs --tail 300 san-pjecalc-runtime-poc || true
+          docker exec san-pjecalc-runtime-poc sh -lc 'tail -n 300 /opt/pjecalc/java.log || true' || true
+
+      - name: Destroy ephemeral runtime
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f san-pjecalc-runtime-poc >/dev/null 2>&1 || true
+          docker network rm san-pjecalc-poc-net >/dev/null 2>&1 || true
+          docker image rm -f san-pjecalc-poc:8a22746 >/dev/null 2>&1 || true
