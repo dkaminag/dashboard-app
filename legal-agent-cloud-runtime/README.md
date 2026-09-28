@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `fe35b36af28a8d17d96eb5e31e9564096494349d`
+- commit: `4451079b4c538b8cf703916b1a25168ad055899d`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -73,4 +73,4 @@ This snapshot includes the local document-extraction runtime files required by `
 
 ## PDF.js standard-font runtime fix
 
-SAN PR #230 binds `pdfjs-dist` standard-font data to the exact local package path used by the isolated document-extraction worker. This removes an implicit runtime-directory dependency exposed by the downstream container build gate when the embedded Helvetica PDF smoke ran inside Docker. The change does not add OCR, external file access, provider calls, or attachment persistence.
+SAN PR #230 plus follow-up `4451079b4c538b8cf703916b1a25168ad055899d` bind `pdfjs-dist` standard-font data to the exact local filesystem path used by the isolated document-extraction worker. This removes an implicit runtime-directory dependency exposed by the downstream container build gate when the embedded Helvetica PDF smoke ran inside Docker. The change does not add OCR, external file access, provider calls, or attachment persistence.
