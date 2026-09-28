@@ -1,0 +1,11 @@
+{
+  "source_repo": "dkaminag/san-systems-master",
+  "source_commit": "111831ab2f89699bf7ea9414547b80edee8e2771",
+  "files": [
+    {
+      "source": "schemas/san-legal-agent-staging-evidence-v1.schema.json",
+      "destination": "central-legal-agent-staging-runtime/san-legal-agent-staging-evidence-v1.schema.json",
+      "git_blob_sha": "ccaabc6c68d36652109b49ce0284c2c4af63053b"
+    }
+  ]
+}

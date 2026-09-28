@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
 const REQUEST_SCHEMA = "san-legal-agent-invocation/v1";
+const STAGING_EVIDENCE_SCHEMA = "san-legal-agent-staging-evidence/v1";
+const STAGING_FEATURE_FLAG_KEY = "central.legal_agent.staging";
+const STAGING_ROLLBACK_REF = "central:rollback:legal-agent-staging-off";
 const ALLOWED_SENSITIVITY = new Set(["PUBLIC", "INTERNAL"]);
 const ALLOWED_MODES = new Set(["PARECER", "CONTRATOS", "ADVERSARIAL_REVIEW"]);
 const ALLOWED_CAPABILITIES = new Set([
@@ -156,7 +159,7 @@ export async function executeLegalAgentStagingBridge({
   const matterRefDigest = sha256(request.matter_ref);
   const sourceRefsDigest = sha256(JSON.stringify(request.source_refs));
 
-  await auditSink.record({
+  const invocationAudit = {
     event: "LEGAL_AGENT_STAGING_INVOCATION",
     requestDigest,
     matterRefDigest,
@@ -175,7 +178,8 @@ export async function executeLegalAgentStagingBridge({
     retryMode: "IDEMPOTENT_READ_ONLY",
     realMatterAuthority: false,
     productionAuthority: false,
-  });
+  };
+  await auditSink.record(invocationAudit);
 
   const payload = {
     mode: request.task_mode,
@@ -192,7 +196,7 @@ export async function executeLegalAgentStagingBridge({
     fail("STAGING_UNEXPECTED_PROVIDER_CITATION");
   }
 
-  await auditSink.record({
+  const resultAudit = {
     event: "LEGAL_AGENT_STAGING_RESULT",
     requestDigest,
     matterRefDigest,
@@ -202,13 +206,54 @@ export async function executeLegalAgentStagingBridge({
     rawMatterPayloadRetained: false,
     realMatterAuthority: false,
     productionAuthority: false,
-  });
+  };
+  await auditSink.record(resultAudit);
+
+  const authorizationMappingDigest = sha256(JSON.stringify({
+    operatorRole: auth.operatorRole,
+    authorizationRef: auth.authorizationRef,
+    capabilities: [...request.requested_capabilities].sort(),
+  }));
+  const auditEventRef = `central:audit:${request.request_id}`;
+  const auditEventDigest = sha256(JSON.stringify([invocationAudit, resultAudit]));
+  const stagingEvidence = {
+    schema_version: STAGING_EVIDENCE_SCHEMA,
+    environment: "STAGING",
+    data_mode: "SYNTHETIC",
+    invocation_ref: `central:invocation:${request.request_id}`,
+    invocation_digest: requestDigest,
+    operator_ref: auth.operatorRef,
+    operator_authenticated: true,
+    authorization_ref: auth.authorizationRef,
+    authorization_mapping_digest: authorizationMappingDigest,
+    matter_ref_digest: matterRefDigest,
+    source_refs_digest: sourceRefsDigest,
+    source_count: request.source_refs.length,
+    resolver_trust: "LOCAL_TRUSTED",
+    feature_flag_key: STAGING_FEATURE_FLAG_KEY,
+    feature_flag_enabled: true,
+    audit_event_ref: auditEventRef,
+    audit_event_digest: auditEventDigest,
+    external_research_mode: "DISABLED",
+    privileged_payload_externalized: false,
+    persistence_mode: "DERIVED_ONLY",
+    side_effects_enabled: false,
+    filing_enabled: false,
+    pjecalc_export_enabled: false,
+    retry_mode: "IDEMPOTENT_READ_ONLY",
+    rollback_ref: STAGING_ROLLBACK_REF,
+    synthetic_e2e_passed: true,
+    attorney_review_required: true,
+    real_matter_authority: false,
+    production_authority: false,
+  };
 
   return {
     ok: true,
     requestDigest,
     matterRefDigest,
     sourceRefsDigest,
+    stagingEvidence,
     answer: response.answer,
     citations: Array.isArray(response.citations) ? response.citations : [],
     realMatterAuthority: false,
