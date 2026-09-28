@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `aea2975387f606309cc59b079dc2aaefb555f76b`
+- commit: `d11e3f4a45695d68b8ca130847393f602cf5b6af`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -96,3 +96,10 @@ The executable consistency gate now also rejects model-invented pseudo-citation 
 ## Groq rate-limit hardening
 
 SAN PR #245 merged as `aea2975387f606309cc59b079dc2aaefb555f76b`. The runtime now treats Groq HTTP 429 as an explicit provider-rate-limit condition, performs at most one retry only when Groq supplies a positive `retry-after` of 5 seconds or less, and otherwise returns `AI_PROVIDER_RATE_LIMITED` without masking the condition as a generic 503. The production startup synthetic smoke is disabled after release certification so cold starts do not consume free-tier quota.
+
+
+## Fixed-term service-contract termination hardening
+
+SAN PR #250 closes the remaining material regression exposed by the historical fictitious Alfa early-termination opinion. When a fixed-term agreement may qualify as a Civil Code service contract, the Supervisor must now assess the special service-contract termination regime before relying only on general resiliation or breach rules, distinguish whether the parties validly contracted a different consequence, and keep the conclusion conditional when classification or clause text is unresolved.
+
+The synthetic early-termination benchmark now requires both the special fixed-term service-contract authority proposition and the counterargument that the underlying agreement may not fall within that statutory service-contract regime. When current authority is unavailable for a turn, the no-memory authority rule remains unchanged: the agent must use AUTHORITY_CHECK_REQUIRED rather than inventing a statutory or precedent identifier.
