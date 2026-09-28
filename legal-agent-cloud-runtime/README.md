@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `aea2975387f606309cc59b079dc2aaefb555f76b`
+- commit: `d11e3f4a45695d68b8ca130847393f602cf5b6af`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -96,3 +96,8 @@ The executable consistency gate now also rejects model-invented pseudo-citation 
 ## Groq rate-limit hardening
 
 SAN PR #245 merged as `aea2975387f606309cc59b079dc2aaefb555f76b`. The runtime now treats Groq HTTP 429 as an explicit provider-rate-limit condition, performs at most one retry only when Groq supplies a positive `retry-after` of 5 seconds or less, and otherwise returns `AI_PROVIDER_RATE_LIMITED` without masking the condition as a generic 503. The production startup synthetic smoke is disabled after release certification so cold starts do not consume free-tier quota.
+
+
+## Fixed-term service-contract termination hardening
+
+SAN PR #250 merged as `d11e3f4a45695d68b8ca130847393f602cf5b6af`. The canonical Supervisor now requires explicit assessment of the special Civil Code regime for early termination of fixed-term service contracts before relying only on general resiliation/breach rules, while preserving the no-memory citation gate (`AUTHORITY_CHECK_REQUIRED` when current authority has not been verified for the turn). The synthetic benchmark also requires the classification counterargument so the rule is not applied mechanically to contracts that may fall under a different legal regime.
