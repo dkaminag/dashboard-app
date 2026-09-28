@@ -105,6 +105,8 @@ function validateInvocation(request) {
 
 function validateAuthorization(request, operator, authorization) {
   if (!operator?.authenticated) fail("STAGING_OPERATOR_AUTH_REQUIRED");
+  const operatorRole = String(operator.role || "").trim().toLowerCase();
+  if (operatorRole !== "lawyer") fail("STAGING_OPERATOR_ROLE_BLOCKED");
   const operatorRef = assertReference(operator.ref, "STAGING_OPERATOR_REF_INVALID");
   const authorizationRef = assertReference(authorization?.ref, "STAGING_AUTHORIZATION_INVALID");
   if (authorizationRef !== request.authorization_ref) fail("STAGING_AUTHORIZATION_REF_MISMATCH");
@@ -112,7 +114,7 @@ function validateAuthorization(request, operator, authorization) {
   for (const capability of request.requested_capabilities) {
     if (!allowed.has(capability)) fail("STAGING_CAPABILITY_NOT_AUTHORIZED");
   }
-  return { operatorRef, authorizationRef };
+  return { operatorRef, operatorRole, authorizationRef };
 }
 
 function buildPrompt(resolved) {
@@ -161,6 +163,7 @@ export async function executeLegalAgentStagingBridge({
     sourceRefsDigest,
     sourceCount: request.source_refs.length,
     operatorRef: auth.operatorRef,
+    operatorRole: auth.operatorRole,
     authorizationRef: auth.authorizationRef,
     dataMode: "SYNTHETIC",
     resolverTrust: "LOCAL_TRUSTED",
