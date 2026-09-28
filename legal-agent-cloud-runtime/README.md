@@ -79,3 +79,8 @@ SAN PR #230 plus follow-up `4451079b4c538b8cf703916b1a25168ad055899d` bind `pdfj
 ## glibc container portability
 
 SAN PR #235 merged as `2cf8868b8028f719a920cbe24e636615d262c9a7` and changes the canonical Legal Agent deployment base to `node:22-bookworm-slim`. This preserves the existing Node 22 runtime while using a glibc base for the bounded local PDF/DOCX extraction path that failed under the Alpine container gate. No provider, credential, database, or real-matter boundary is changed.
+
+
+## PDF.js 6 cleanup API
+
+SAN PR #238 merged as `a39ca93ab0c1a2bc4bfecee31a31a18d1bd0a74c`. The bounded PDF worker now releases PDF.js through `PDFDocumentLoadingTask.destroy()` instead of the removed `PDFDocumentProxy.destroy()` API. The no-secret Linux container gate proved the embedded PDF and DOCX extraction smoke after this change.
