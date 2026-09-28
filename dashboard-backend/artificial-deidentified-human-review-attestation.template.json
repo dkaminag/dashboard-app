@@ -1,0 +1,14 @@
+{
+  "schema_version": "central-legal-agent-human-review-attestation/v1",
+  "fixture_scope": "ARTIFICIAL_DEIDENTIFIED_FIXTURE_ONLY",
+  "redacted_digest": "sha256:9d55aff6e5a54d095da59f9f9b39d9a71e018c8dc46973322770331d377ebc29",
+  "reviewed": false,
+  "role": "lawyer",
+  "freeTextReviewed": false,
+  "attestationKind": "REAL_HUMAN_LAWYER_REVIEW",
+  "structuredIdentifiersAbsent": null,
+  "freeTextReidentificationRiskAcceptable": null,
+  "realSourceAuthorized": false,
+  "realMatterAuthority": false,
+  "productionAuthority": false
+}
