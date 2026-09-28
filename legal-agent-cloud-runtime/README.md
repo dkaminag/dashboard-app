@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `d11e3f4a45695d68b8ca130847393f602cf5b6af`
+- commit: `54082914a0d1226905b77fbaceb0e21035545893`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -101,3 +101,10 @@ SAN PR #245 merged as `aea2975387f606309cc59b079dc2aaefb555f76b`. The runtime no
 ## Fixed-term service-contract termination hardening
 
 SAN PR #250 merged as `d11e3f4a45695d68b8ca130847393f602cf5b6af`. The canonical Supervisor now requires explicit assessment of the special Civil Code regime for early termination of fixed-term service contracts before relying only on general resiliation/breach rules, while preserving the no-memory citation gate (`AUTHORITY_CHECK_REQUIRED` when current authority has not been verified for the turn). The synthetic benchmark also requires the classification counterargument so the rule is not applied mechanically to contracts that may fall under a different legal regime.
+
+
+## Semantic live-smoke certification gate
+
+SAN PR #260 adds a semantic acceptance gate to the opt-in synthetic production smoke. A smoke can now emit `legal-agent-synthetic-smoke-pass` only if the repaired/final answer contains substantive coverage for all six fixed regression dimensions: termination classification, penalty nature, supplementary damages, claim-specific limitation analysis, the potentially applicable fixed-term service-contract rule, and the counterargument on whether that special regime actually applies. With public research disabled, the smoke must also preserve `AUTHORITY_CHECK_REQUIRED` rather than inventing authority identifiers, and provider citations must remain absent.
+
+This strengthens certification evidence only; it does not force these machine-readable section labels into ordinary lawyer-facing responses and does not authorize real client matter data.
