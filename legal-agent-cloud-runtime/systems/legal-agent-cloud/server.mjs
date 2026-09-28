@@ -14,6 +14,7 @@ import {
 } from "./context-budget.mjs";
 import { buildPostgresPoolConfig } from "./pg-config.mjs";
 import { findLegalConsistencyViolation as executeLegalConsistencyGate } from "./legal-consistency.mjs";
+import { findSyntheticSmokeCoverageGap, syntheticSmokeRequiredSections } from "./synthetic-smoke-cert.mjs";
 import { extractAttachmentText, TEXT_ATTACHMENT_MIME } from "./document-extract.mjs";
 
 const { Pool } = pg;
@@ -1661,14 +1662,28 @@ async function runSyntheticStartupSmoke() {
     const result = await callAI({
       history: [],
       message:
-        "CASO ESTRITAMENTE SINTETICO PARA CERTIFICACAO: Uma empresa ficticia Alfa celebrou contrato empresarial por 12 meses. O contrato preve rescisao imotivada mediante aviso previo de 30 dias e multa equivalente a uma mensalidade. A contratante encerrou imediatamente, sem aviso. Analise de forma condicionada, identifique fatos faltantes, argumentos de ambas as partes e riscos. Pesquisa publica esta desabilitada; nao invente dispositivos, precedentes, prazos prescricionais ou fontes.",
+        "CASO ESTRITAMENTE SINTETICO PARA CERTIFICACAO: Uma empresa ficticia Alfa celebrou contrato empresarial de prestacao de servicos por 12 meses. O contrato preve rescisao imotivada mediante aviso previo de 30 dias e multa equivalente a uma mensalidade. A contratante encerrou imediatamente, sem aviso. Analise de forma condicionada e sem pesquisa publica. Nao invente dispositivos, precedentes, prazos prescricionais ou fontes. Responda obrigatoriamente com estas seis secoes rotuladas exatamente: [TERMINATION_CLASSIFICATION], [PENALTY_NATURE], [SUPPLEMENTARY_DAMAGES], [LIMITATION_CLASSIFICATION], [FIXED_TERM_SERVICE_RULE], [COUNTER_APPLICABILITY]. Como a pesquisa publica esta desabilitada, use AUTHORITY_CHECK_REQUIRED quando a conclusao depender de autoridade legal atual nao fornecida no caso.",
       files: [],
       mode: "PARECER",
       webSearch: false,
     });
+    const semanticCoverageGap = findSyntheticSmokeCoverageGap(result.text);
+    if (semanticCoverageGap) {
+      const error = new Error("SYNTHETIC_SMOKE_SEMANTIC_COVERAGE_REQUIRED");
+      error.providerCode = semanticCoverageGap;
+      throw error;
+    }
+    if ((result.citations?.length || 0) !== 0) {
+      const error = new Error("SYNTHETIC_SMOKE_UNEXPECTED_CITATION");
+      error.providerCode = "citations_present_with_public_research_disabled";
+      throw error;
+    }
+
     console.info(JSON.stringify({
       level: "info",
       event: "legal-agent-synthetic-smoke-pass",
+      semanticCoverage: "PASS",
+      requiredSections: syntheticSmokeRequiredSections(),
       provider: result.provider,
       model: result.model,
       latencyMs: Date.now() - started,
