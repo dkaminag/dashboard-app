@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check pg-config.mjs && node --check context-budget.mjs && node --check legal-consistency.mjs && node --check document-extract.mjs && node --check document-extract-worker.mjs && node --check server.mjs && node --check public/app.js && node document-extract-smoke.mjs"
+    "check": "node --check pg-config.mjs && node --check context-budget.mjs && node --check legal-consistency.mjs && node --check synthetic-smoke-cert.mjs && node --check document-extract.mjs && node --check document-extract-worker.mjs && node --check server.mjs && node --check public/app.js && node document-extract-smoke.mjs"
   },
   "dependencies": {
     "pg": "8.16.3",
