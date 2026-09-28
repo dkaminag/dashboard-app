@@ -5,6 +5,8 @@ on:
     paths:
       - "dashboard-backend/central-legal-agent-staging-bridge.mjs"
       - "dashboard-backend/test-central-legal-agent-staging-bridge.mjs"
+      - "dashboard-backend/central-legal-agent-session-binding.mjs"
+      - "dashboard-backend/test-central-legal-agent-session-binding.mjs"
       - "dashboard-backend/CENTRAL_LEGAL_AGENT_STAGING_BRIDGE_20260928.md"
       - ".github/workflows/central-legal-agent-staging-e2e.yml"
   workflow_dispatch:
@@ -41,4 +43,6 @@ jobs:
           test -z "${CJ_DATABASE_URL:-}"
           node --check dashboard-backend/central-legal-agent-staging-bridge.mjs
           node dashboard-backend/test-central-legal-agent-staging-bridge.mjs
+          node --check dashboard-backend/central-legal-agent-session-binding.mjs
+          node dashboard-backend/test-central-legal-agent-session-binding.mjs
           echo "CENTRAL_LEGAL_AGENT_SYNTHETIC_STAGING_E2E=PASS"

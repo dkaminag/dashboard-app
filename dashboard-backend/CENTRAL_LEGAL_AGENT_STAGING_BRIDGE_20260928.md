@@ -82,3 +82,34 @@ A dedicated service named `central-legal-agent-staging-synthetic` was requested 
 Classification: `BLOCKED_RESOURCE`, not runtime failure.
 
 Until a resource slot is available, GitHub Actions isolated runtime certification remains the executable staging environment. Real client matter authority remains false.
+
+
+## Real Central session-principal binding — synthetic matter only
+
+The next identity layer is implemented as a server-resolved principal handoff rather than forwarding a browser cookie or session token.
+
+`dashboard-backend/central-legal-agent-session-binding.mjs` accepts only:
+
+- identity source `CENTRAL_SERVER_SESSION`;
+- `authenticated=true`;
+- active Central user;
+- verified role `lawyer`;
+- SHA-256 principal/session references, never raw identifiers;
+- explicit MFA assurance booleans, with fail-closed enforcement when MFA is required.
+
+Raw cookie, authorization header, token, session id/token, password/hash, MFA/TOTP material or secrets are rejected if supplied to the binding object.
+
+The `lawyer` capability set is fixed by the server-side adapter. Caller-supplied capability escalation is not accepted. The resulting invocation still uses only the bundled synthetic matter/source fixture and keeps real-matter/production authority false.
+
+## Production identity presence preflight
+
+The v3.2 verifier now contains an opt-in, read-only script:
+
+`central-juridica-v32-verifier/central-lawyer-session-preflight.mjs`
+
+When explicitly enabled, it queries only aggregate counts in `central_juridica_v32_prod_r3` inside `BEGIN READ ONLY`:
+
+- active users with role `lawyer`;
+- session rows joinable server-side to active `lawyer` users.
+
+It emits no username, user id, session id/token/hash, password, MFA/TOTP material, database URL or row payload. Any absence of an active lawyer or joinable session fails closed. Default behavior is disabled/skipped.
