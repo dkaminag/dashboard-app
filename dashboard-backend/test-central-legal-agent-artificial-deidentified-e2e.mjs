@@ -6,6 +6,7 @@ import {
   executeLegalAgentStagingBridge,
 } from "./central-legal-agent-staging-bridge.mjs";
 
+// Test-only artificial fixture: never substitute real client or matter data here.
 const SAN_DEIDENTIFIED_GATE_COMMIT = "69957c87b657434b99e9f9b5a3a5805fa12bfdc7";
 const SAN_DEIDENTIFIED_MODULE_BLOB = "2a7d1bb1e36152dc375d50fa687fe46e0118f67c";
 const SAN_DEIDENTIFIED_SCHEMA_BLOB = "1f04d9a6e74e3053bcaf8ee976519afaf1963bf8";
