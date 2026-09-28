@@ -104,6 +104,11 @@ try {
   const result = await main();
   parentPort.postMessage({ ok: true, ...result });
 } catch (error) {
+  if (process.env.LEGAL_DOCUMENT_EXTRACTION_DIAGNOSTIC === "1") {
+    const diagnosticName = String(error?.name || "Error").slice(0, 120);
+    const diagnosticMessage = String(error?.message || "unknown").replace(/[\r\n]+/g, " ").slice(0, 500);
+    console.error(`DOCUMENT_EXTRACTION_DIAGNOSTIC name=${diagnosticName} message=${diagnosticMessage}`);
+  }
   const known = new Set([
     "AI_PROVIDER_FILE_NO_TEXT",
     "AI_PROVIDER_TEXT_FILE_TOO_LARGE",
