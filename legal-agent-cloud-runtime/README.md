@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `54082914a0d1226905b77fbaceb0e21035545893`
+- commit: `793f2ca5dee95402440aaf96b29768ac1479103c`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -108,3 +108,17 @@ SAN PR #250 merged as `d11e3f4a45695d68b8ca130847393f602cf5b6af`. The canonical 
 SAN PR #260 adds a semantic acceptance gate to the opt-in synthetic production smoke. A smoke can emit `legal-agent-synthetic-smoke-pass` only if the final governed answer contains substantive coverage for termination classification, penalty nature, supplementary damages, claim-specific limitation analysis, the potentially applicable fixed-term service-contract rule, and the counterargument on whether that special regime actually applies. With public research disabled, the smoke must preserve `AUTHORITY_CHECK_REQUIRED` rather than inventing authority identifiers, and provider citations must remain absent.
 
 This strengthens certification evidence only; it does not force these machine-readable labels into ordinary lawyer-facing responses and does not authorize real client matter data.
+
+
+## Privileged-data fail-closed boundary
+
+SAN PR #288 merged as `793f2ca5dee95402440aaf96b29768ac1479103c` and adds an explicit request sensitivity gate. The deployed code remains safe by default:
+
+- current default sensitivity is `SYNTHETIC_PUBLIC`;
+- `CONFIDENTIAL` fails closed unless `LEGAL_PRIVILEGED_DATA_ALLOWED=1` is separately promoted and the Groq provider configuration includes the existing data-policy acknowledgment plus an administrator ZDR attestation;
+- the application does not verify the external Groq account setting and does not treat the ZDR checkbox alone as authorization;
+- confidential threads cannot be downgraded back to public;
+- public web research is blocked for confidential turns;
+- this snapshot promotion does **not** set `LEGAL_PRIVILEGED_DATA_ALLOWED`, does not make a ZDR attestation, and does not authorize real Central matter data.
+
+The purpose of this promotion is to make the runtime fail closed before any future real-matter authorization, not to grant that authorization.

@@ -14,10 +14,9 @@ const APPROVED_PATH_SOURCES = [
   },
   {
     path: 'central-juridica-v32-verifier',
-    // PR #59 adds only the opt-in read-only lawyer-session presence preflight
-    // and its safety contract. Pin the exact branch commit containing those
-    // verifier bytes; later certification changes must not modify the path.
-    source: 'ebb452cfc2d3733e5c1e554f3ade3b7abe6eee6b',
+    // PR #59 was squash-merged as 6bd2354c...; pin the canonical main
+    // merge commit containing the certified read-only lawyer-session preflight.
+    source: '6bd2354c47281db1370a6a556e5574689e0a3764',
   },
 ];
 

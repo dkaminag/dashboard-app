@@ -22,6 +22,10 @@ const errorMessages = {
   AI_NOT_CONFIGURED: "A IA ainda não foi configurada pelo administrador.",
   AI_DATA_POLICY_NOT_ACKNOWLEDGED: "O administrador ainda não confirmou a política de dados do provedor de IA.",
   DATA_POLICY_ACK_REQUIRED: "Confirme a política de dados antes de ativar a IA.",
+  INVALID_SENSITIVITY: "Classificação de dados inválida.",
+  PRIVILEGED_DATA_NOT_AUTHORIZED: "O ambiente ainda não está autorizado para dados confidenciais ou privilegiados. Use apenas conteúdo sintético/público.",
+  PRIVILEGED_PUBLIC_RESEARCH_BLOCKED: "Pesquisa pública fica bloqueada em demandas confidenciais/privilegiadas.",
+  THREAD_SENSITIVITY_LOCKED: "Esta demanda já contém conteúdo confidencial/privilegiado e não pode ser reclassificada como pública. Crie uma nova demanda para conteúdo sintético/público.",
   AI_PROVIDER_ERROR: "O provedor de IA recusou ou não concluiu a solicitação.",
   AI_PROVIDER_RATE_LIMITED: "O limite temporário do provedor de IA foi atingido. Aguarde alguns segundos ou minutos e tente novamente.",
   AI_EMPTY_RESPONSE: "O provedor de IA respondeu sem conteúdo utilizável.",
@@ -109,6 +113,16 @@ function setAiStatus() {
     el.textContent = `IA ativa · ${providerLabel} · ${state.status.model}`;
     el.className = "status-pill ok";
   }
+
+  const privilegedReady = state.status?.privilegedMatterReady === true;
+  const scope = $("data-scope");
+  scope.textContent = privilegedReady
+    ? "Escopo de dados: confidencial/privilegiado autorizado pelo gate do ambiente."
+    : "Escopo de dados: SOMENTE sintético/público. Não insira nomes de clientes, números de processo, documentos sigilosos ou estratégia privilegiada.";
+  const sensitivity = $("sensitivity-select");
+  const confidential = sensitivity?.querySelector('option[value="CONFIDENTIAL"]');
+  if (confidential) confidential.disabled = !privilegedReady;
+  if (!privilegedReady && sensitivity?.value === "CONFIDENTIAL") sensitivity.value = "SYNTHETIC_PUBLIC";
 }
 
 function safeHttpUrl(url) {
@@ -235,7 +249,29 @@ function messageNode(message) {
   return block;
 }
 
+function syncThreadSensitivity(messages) {
+  const locked = (messages || []).some(
+    (message) => message.role === "user" && message.metadata?.sensitivity === "CONFIDENTIAL",
+  );
+  const sensitivity = $("sensitivity-select");
+  const webSearch = $("web-search");
+  if (locked) {
+    sensitivity.value = "CONFIDENTIAL";
+    sensitivity.disabled = true;
+    webSearch.checked = false;
+    webSearch.disabled = true;
+  } else {
+    sensitivity.disabled = false;
+    if (sensitivity.value === "CONFIDENTIAL" && state.status?.privilegedMatterReady !== true) {
+      sensitivity.value = "SYNTHETIC_PUBLIC";
+    }
+    webSearch.disabled = sensitivity.value === "CONFIDENTIAL";
+    if (webSearch.disabled) webSearch.checked = false;
+  }
+}
+
 function renderMessages(messages) {
+  syncThreadSensitivity(messages);
   const area = $("messages");
   area.textContent = "";
   for (const message of messages) area.append(messageNode(message));
@@ -392,6 +428,12 @@ $("file-input").addEventListener("change", () => {
   renderFiles();
 });
 
+$("sensitivity-select").addEventListener("change", () => {
+  const confidential = $("sensitivity-select").value === "CONFIDENTIAL";
+  $("web-search").disabled = confidential;
+  if (confidential) $("web-search").checked = false;
+});
+
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (state.sending) return;
@@ -431,6 +473,7 @@ $("composer").addEventListener("submit", async (event) => {
       body: {
         message,
         mode: $("mode-select").value,
+        sensitivity: $("sensitivity-select").value,
         webSearch: $("web-search").checked,
         files,
       },
@@ -521,6 +564,7 @@ function syncProviderHelp(providerName) {
   $("provider-file-help").textContent = groq
     ? "Groq GPT-OSS: TXT/RTF, PDF com camada de texto e DOCX são extraídos localmente. Imagens, DOC legado e PDF escaneado sem texto continuam bloqueados."
     : "OpenAI: mantém suporte aos formatos de documentos aceitos pelo portal.";
+  $("provider-zdr-row").classList.toggle("hidden", !groq);
 }
 
 async function loadAdmin() {
@@ -535,8 +579,9 @@ async function loadAdmin() {
   syncProviderHelp(providerName);
   $("provider-key").value = "";
   $("provider-policy-ack").checked = provider.dataPolicyAcknowledged === true;
+  $("provider-zdr-ack").checked = provider.zeroDataRetentionConfirmed === true;
   $("provider-state").textContent = provider.configured
-    ? `Configurado · ${providerName === "groq" ? "Groq" : "OpenAI"} · ${provider.source} · ${provider.model} · política confirmada`
+    ? `Configurado · ${providerName === "groq" ? "Groq" : "OpenAI"} · ${provider.source} · ${provider.model} · política confirmada · ${provider.zeroDataRetentionConfirmed ? "ZDR declarado" : "ZDR não declarado"}`
     : provider.apiKeyConfigured
       ? "Chave cadastrada; falta confirmar a política de dados."
       : "Ainda não configurado.";
@@ -548,6 +593,7 @@ $("provider-name").addEventListener("change", () => {
   renderProviderModels(providerName);
   syncProviderHelp(providerName);
   $("provider-policy-ack").checked = false;
+  $("provider-zdr-ack").checked = false;
 });
 function renderUsers(users) {
   const list = $("user-list");
@@ -618,6 +664,7 @@ $("provider-form").addEventListener("submit", async (event) => {
         apiKey: $("provider-key").value.trim(),
         model: $("provider-model").value.trim(),
         dataPolicyAcknowledged: $("provider-policy-ack").checked,
+        zeroDataRetentionConfirmed: $("provider-zdr-ack").checked,
       },
     });
     $("provider-key").value = "";

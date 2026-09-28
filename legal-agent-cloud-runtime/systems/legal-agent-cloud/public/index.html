@@ -71,6 +71,7 @@
         <div>
           <h2 id="thread-title">Nova demanda</h2>
           <div id="ai-status" class="status-pill">Verificando IA…</div>
+          <div id="data-scope" class="muted small-text">Verificando escopo de dados…</div>
         </div>
         <div class="controls">
           <label class="compact">Modo
@@ -83,6 +84,12 @@
               <option value="EXECUCAO">Execução</option>
               <option value="PESQUISA">Pesquisa jurídica</option>
               <option value="ADVERSARIAL_REVIEW">Revisão adversarial</option>
+            </select>
+          </label>
+          <label class="compact">Dados
+            <select id="sensitivity-select">
+              <option value="SYNTHETIC_PUBLIC">Sintético / público</option>
+              <option value="CONFIDENTIAL">Confidencial / privilegiado</option>
             </select>
           </label>
           <label class="toggle">
@@ -160,6 +167,10 @@
           <label class="policy-ack">
             <input id="provider-policy-ack" type="checkbox" required>
             <span>Confirmo que o escritório autorizou o processamento pelo provedor selecionado e revisou a política de retenção de dados aplicável.</span>
+          </label>
+          <label id="provider-zdr-row" class="policy-ack">
+            <input id="provider-zdr-ack" type="checkbox">
+            <span>Declaro que o Zero Data Retention (ZDR) está ativado na organização Groq em Data Controls. Esta é uma declaração administrativa; o portal não consulta nem verifica a configuração da conta Groq.</span>
           </label>
           <button type="submit" class="primary">Salvar configuração</button>
         </form>

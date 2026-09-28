@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "purpose": "deployment_snapshot_only",
   "source_of_truth": "dkaminag/san-systems-master",
-  "source_commit": "54082914a0d1226905b77fbaceb0e21035545893",
+  "source_commit": "793f2ca5dee95402440aaf96b29768ac1479103c",
   "created_at": "2026-09-28",
   "byte_parity": "PASS",
   "files": [
@@ -44,15 +44,15 @@
     },
     {
       "source": "systems/legal-agent-cloud/server.mjs",
-      "git_blob_sha": "b493c4513dd2e6b738f2cc44f123a0910a16cb4e"
+      "git_blob_sha": "3505912197b69ab7542507a439b19ec875114c64"
     },
     {
       "source": "systems/legal-agent-cloud/public/index.html",
-      "git_blob_sha": "147379e471e0affa3abc6aeed94c1d20e2f1a21d"
+      "git_blob_sha": "0a1cca6c5ff5a727fe292ebcbe4c6a79a2312540"
     },
     {
       "source": "systems/legal-agent-cloud/public/app.js",
-      "git_blob_sha": "f7ffc8512b51da6b8e7d4109c7223b4146446c4b"
+      "git_blob_sha": "a4c7973f00b1a126da9dff4ca223eea2aea4905b"
     },
     {
       "source": "systems/legal-agent-cloud/public/styles.css",
