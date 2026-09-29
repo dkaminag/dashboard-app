@@ -1,0 +1,54 @@
+name: Audit Central Human Review Route
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/audit-central-human-review-route.yml"
+      - "central-juridica-railway-v3.2.0/**"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-runtime-routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Unpack governed runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd central-juridica-railway-v3.2.0
+          node unpack.mjs
+          node apply-overlay.mjs
+          node patch-snapshot-dr.mjs
+          node patch-access-ui.mjs
+      - name: Report safe route inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const p='central-juridica-railway-v3.2.0/runtime/src/server.mjs';
+          const source=fs.readFileSync(p,'utf8');
+          const routes=[...new Set([...source.matchAll(/["'`](\/api\/[A-Za-z0-9_./:-]+)/g)].map(m=>m[1]))].sort();
+          const terms=['review','attest','lawyer','mfa','audit','session'];
+          const presence=Object.fromEntries(terms.map(t=>[t,new RegExp(t,'i').test(source)]));
+          const routeContext=source.split(/\r?\n/)
+            .filter(line=>line.includes('/api/') && /(pathname|url|method|===|startsWith|match)/.test(line))
+            .map(line=>line.trim())
+            .slice(0,250);
+          console.log(JSON.stringify({
+            event:'CENTRAL_RUNTIME_ROUTE_INVENTORY',
+            routeCount:routes.length,
+            routes,
+            presence,
+            routeContext
+          },null,2));
+          NODE
