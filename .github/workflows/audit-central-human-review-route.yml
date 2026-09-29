@@ -29,7 +29,7 @@ jobs:
           node apply-overlay.mjs
           node patch-snapshot-dr.mjs
           node patch-access-ui.mjs
-      - name: Report safe route inventory
+      - name: Report safe route inventory and extension anchors
         shell: bash
         run: |
           set -euo pipefail
@@ -37,18 +37,34 @@ jobs:
           const fs = require('fs');
           const p='central-juridica-railway-v3.2.0/runtime/src/server.mjs';
           const source=fs.readFileSync(p,'utf8');
+          const lines=source.split(/\r?\n/);
           const routes=[...new Set([...source.matchAll(/["'`](\/api\/[A-Za-z0-9_./:-]+)/g)].map(m=>m[1]))].sort();
           const terms=['review','attest','lawyer','mfa','audit','session'];
           const presence=Object.fromEntries(terms.map(t=>[t,new RegExp(t,'i').test(source)]));
-          const routeContext=source.split(/\r?\n/)
+          const routeContext=lines
             .filter(line=>line.includes('/api/') && /(pathname|url|method|===|startsWith|match)/.test(line))
             .map(line=>line.trim())
             .slice(0,250);
+          const anchorRe=/(requireSession|appendAuditEntry|persistAuditDelta|readJson|isMfaRequired|session\.user|role|auditLog|audit\/integrity|users\/me\/mfa)/i;
+          const hitIndexes=[];
+          lines.forEach((line,i)=>{if(anchorRe.test(line)) hitIndexes.push(i)});
+          const ranges=[];
+          for(const i of hitIndexes){
+            const start=Math.max(0,i-8), end=Math.min(lines.length,i+13);
+            if(ranges.some(r=>start<=r.end+3)) ranges[ranges.length-1].end=Math.max(ranges[ranges.length-1].end,end);
+            else ranges.push({start,end});
+          }
+          const excerpts=ranges.slice(0,18).map(r=>({
+            start:r.start+1,
+            end:r.end,
+            text:lines.slice(r.start,r.end).join('\n')
+          }));
           console.log(JSON.stringify({
             event:'CENTRAL_RUNTIME_ROUTE_INVENTORY',
             routeCount:routes.length,
             routes,
             presence,
-            routeContext
+            routeContext,
+            excerpts
           },null,2));
           NODE
