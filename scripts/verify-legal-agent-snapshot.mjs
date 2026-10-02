@@ -79,7 +79,7 @@ for (const entry of manifest.files) {
   }
 
   const absolute = path.join(ROOT, destination);
-  if (!fs.isFileSync(absolute)) {
+  if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) {
     throw new Error('SNAPSHOT_FILE_MISSING:' + destination);
   }
   const data = fs.readFileSync(absolute);
