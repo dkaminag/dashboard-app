@@ -4,6 +4,13 @@ on:
   pull_request:
     paths:
       - "legal-agent-cloud-runtime/**"
+      - "scripts/verify-legal-agent-snapshot.mjs"
+      - ".github/workflows/legal-agent-container-build-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "legal-agent-cloud-runtime/**"
+      - "scripts/verify-legal-agent-snapshot.mjs"
       - ".github/workflows/legal-agent-container-build-gate.yml"
   workflow_dispatch:
 
@@ -19,10 +26,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout dashboard snapshot
+      - name: Checkout exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Verify generated mirror integrity
+        run: node scripts/verify-legal-agent-snapshot.mjs
 
       - name: Verify required snapshot files exist
         shell: bash
