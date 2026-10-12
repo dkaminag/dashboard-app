@@ -100,6 +100,12 @@ async function main() {
   throw extractionError("AI_PROVIDER_FILE_UNSUPPORTED");
 }
 
+function mimeForLog(value) {
+  if (value === PDF_MIME) return "pdf";
+  if (value === DOCX_MIME) return "docx";
+  return "unsupported";
+}
+
 try {
   const result = await main();
   parentPort.postMessage({ ok: true, ...result });
@@ -112,5 +118,17 @@ try {
     "AI_PROVIDER_FILE_UNSUPPORTED",
   ]);
   const code = known.has(error?.code) ? error.code : "AI_PROVIDER_FILE_EXTRACTION_FAILED";
+  // Emit only a bounded diagnostic category; never log filenames, document content,
+  // stack traces, exception messages, URLs, or credentials.
+  const safeNames = new Set(["InvalidPDFException", "MissingPDFException",
+    "PasswordException", "UnknownErrorException", "FormatError", "TypeError",
+    "RangeError", "Error"]);
+  const category = safeNames.has(error?.name) ? error.name : "OtherError";
+  console.error(JSON.stringify({
+    event: "document-extract-worker-failure",
+    mime: mimeForLog(workerData?.mime),
+    category,
+    code,
+  }));
   parentPort.postMessage({ ok: false, code });
 }
