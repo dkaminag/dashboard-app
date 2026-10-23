@@ -5,7 +5,7 @@ This directory is a **deployment snapshot only**.
 Authoritative Source of Truth:
 
 - repository: `dkaminag/san-systems-master`
-- commit: `920df217cd080a089e5ace19bb4819cdd47a2b78`
+- commit: `341d697e96314b3604df0d8356f956af556deb71`
 - canonical application path: `systems/legal-agent-cloud/`
 - canonical legal skill: `skills/legal-counsel-br/SKILL.md`
 
@@ -127,3 +127,8 @@ The purpose of this promotion is to make the runtime fail closed before any futu
 ## One-time administrator password recovery
 
 SAN PR #313 adds a bounded emergency recovery path for a lost administrator password. Recovery is disabled unless Railway supplies both a high-entropy `LEGAL_RECOVERY_TOKEN` and a future `LEGAL_RECOVERY_EXPIRES_AT`. The login page exposes the recovery form only during that window. A successful reset is limited to an active administrator account, invalidates that administrator's sessions, records only the encrypted SHA-256 digest of the consumed code, and makes the same code unusable again. Neither the code nor the new password is logged or committed to this snapshot.
+
+
+## Sanitized extraction-worker diagnostics
+
+SAN PR #452 exact head `341d697e96314b3604df0d8356f956af556deb71` adds an allowlisted exception category at the worker fatal-error boundary and normalizes the local PDF.js standard-font path for Windows separators. Client-facing failures remain generic; exception messages, stacks, document contents, paths, URLs and credentials are not logged. The source head passed Linux CI, Windows full CI and the synthetic PDF/DOCX worker gate before this snapshot refresh.
