@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const STANDARD_FONT_DATA_URL = fileURLToPath(new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url));
+// PDF.js expects a slash-terminated font base path, including on Windows.
+const STANDARD_FONT_DATA_URL = fileURLToPath(new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url)).replaceAll(String.fromCharCode(92), "/");
 
 function extractionError(code) {
   const error = new Error(code);
@@ -100,7 +101,7 @@ async function main() {
   throw extractionError("AI_PROVIDER_FILE_UNSUPPORTED");
 }
 
-function mimeForLog(value) {
+function safeMime(value) {
   if (value === PDF_MIME) return "pdf";
   if (value === DOCX_MIME) return "docx";
   return "unsupported";
@@ -118,15 +119,14 @@ try {
     "AI_PROVIDER_FILE_UNSUPPORTED",
   ]);
   const code = known.has(error?.code) ? error.code : "AI_PROVIDER_FILE_EXTRACTION_FAILED";
-  // Emit only a bounded diagnostic category; never log filenames, document content,
-  // stack traces, exception messages, URLs, or credentials.
-  const safeNames = new Set(["InvalidPDFException", "MissingPDFException",
+  // Allowlisted diagnostics only; no document contents, paths or error messages.
+  const allowedNames = new Set(["InvalidPDFException", "MissingPDFException",
     "PasswordException", "UnknownErrorException", "FormatError", "TypeError",
     "RangeError", "Error"]);
-  const category = safeNames.has(error?.name) ? error.name : "OtherError";
+  const category = allowedNames.has(error?.name) ? error.name : "OtherError";
   console.error(JSON.stringify({
     event: "document-extract-worker-failure",
-    mime: mimeForLog(workerData?.mime),
+    mime: safeMime(workerData?.mime),
     category,
     code,
   }));
